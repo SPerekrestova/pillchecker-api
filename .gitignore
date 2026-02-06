@@ -13,3 +13,4 @@ models/
 *.bin
 *.safetensors
 .DS_Store
+PROGRESS.md
