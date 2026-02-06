@@ -18,13 +18,18 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/app /app/app
 
 ENV PATH="/app/.venv/bin:$PATH"
-
-# HuggingFace model cache — mount as Docker volume for persistence
 ENV HF_HOME=/app/models
 ENV TRANSFORMERS_CACHE=/app/models
+
+# Pre-download NER model so the image is self-contained.
+# Layer is cached until venv or model ID changes.
+# In local dev, docker-compose mounts a volume over /app/models.
+RUN python -c "from transformers import pipeline; pipeline('ner', model='OpenMed/OpenMed-NER-PharmaDetect-ModernClinical-149M', aggregation_strategy='none')"
+
+# App code comes last — most frequently changing layer
+COPY --from=builder /app/app /app/app
 
 EXPOSE 8000
 

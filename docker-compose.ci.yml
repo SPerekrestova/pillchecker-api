@@ -1,0 +1,13 @@
+# CI override — use pre-built image, no volume mounts, no nginx.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d api
+services:
+  api:
+    image: pillchecker-api:ci
+    volumes: []
+    environment:
+      - HF_HOME=/app/models
+    restart: "no"
+
+  nginx:
+    profiles:
+      - disabled
