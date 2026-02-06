@@ -3,7 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.analyze import router as analyze_router
 from app.api.health import router as health_router
+from app.api.interactions import router as interactions_router
 from app.data import ddinter_store
 from app.nlp import ner_model
 
@@ -29,3 +31,5 @@ app = FastAPI(
 )
 
 app.include_router(health_router)
+app.include_router(analyze_router)
+app.include_router(interactions_router)
