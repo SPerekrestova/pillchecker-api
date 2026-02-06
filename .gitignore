@@ -14,3 +14,5 @@ models/
 *.safetensors
 .DS_Store
 PROGRESS.md
+CLAUDE.md
+.idea
