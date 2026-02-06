@@ -1,16 +1,26 @@
-FROM python:3.12-slim AS base
+FROM ghcr.io/astral-sh/uv:0.9-python3.12-bookworm-slim AS builder
 
 WORKDIR /app
 
-# System deps for torch
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc && \
-    rm -rf /var/lib/apt/lists/*
+# Copy dependency files first for layer caching
+COPY pyproject.toml uv.lock .python-version ./
 
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
+# Install dependencies only (locked, no project code yet)
+RUN uv sync --frozen --no-install-project --no-dev
 
+# Copy application code and install the project
 COPY app/ app/
+RUN uv sync --frozen --no-dev
+
+# --- Runtime stage ---
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/app /app/app
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 # HuggingFace model cache — mount as Docker volume for persistence
 ENV HF_HOME=/app/models

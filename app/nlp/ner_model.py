@@ -28,29 +28,51 @@ def load_model() -> None:
     _ner_pipeline = pipeline(
         "ner",
         model=MODEL_ID,
-        aggregation_strategy="simple",
+        aggregation_strategy="none",
     )
 
 
 def predict(text: str) -> list[Entity]:
     """Extract drug/chemical entities from text.
 
-    Returns a list of Entity objects with text, label, confidence score,
-    and character offsets.
+    Uses aggregation_strategy="none" and merges tokens manually because
+    ModernBERT's tokenizer lacks ## sub-word markers, causing the pipeline
+    to mislabel continuation tokens as B- (begin) instead of I- (inside).
     """
     if _ner_pipeline is None:
         raise RuntimeError("NER model not loaded — call load_model() first")
 
     raw = _ner_pipeline(text)
-    entities = []
+    if not raw:
+        return []
+
+    # Strip B-/I- prefix to get base label, then merge adjacent same-label
+    # tokens that form alphabetic words (no spaces/digits between them).
     for item in raw:
-        entities.append(
-            Entity(
-                text=item["word"],
-                label=item["entity_group"],
-                score=round(item["score"], 4),
-                start=item["start"],
-                end=item["end"],
-            )
+        item["base_label"] = item["entity"].split("-", 1)[-1]
+
+    merged: list[dict] = [raw[0]]
+    for item in raw[1:]:
+        prev = merged[-1]
+        new_chars = text[prev["end"]:item["end"]]
+        if (
+            item["base_label"] == prev["base_label"]
+            and item["start"] == prev["end"]
+            and new_chars.isalpha()
+        ):
+            prev["end"] = item["end"]
+            prev["score"] = min(prev["score"], item["score"])
+        else:
+            merged.append(item)
+
+    return [
+        Entity(
+            text=text[item["start"]:item["end"]].strip(),
+            label=item["base_label"],
+            score=round(float(item["score"]), 4),
+            start=item["start"],
+            end=item["end"],
         )
-    return entities
+        for item in merged
+        if item["base_label"] != "O"
+    ]

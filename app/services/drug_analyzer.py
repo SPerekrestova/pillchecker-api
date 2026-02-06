@@ -33,7 +33,10 @@ async def analyze(text: str) -> list[dict]:
 
     # Pass 1: NER
     entities = ner_model.predict(text)
-    drug_entities = [e for e in entities if e.label in ("CHEM", "Chemical", "CHEMICAL")]
+    drug_entities = [
+        e for e in entities
+        if e.label in ("CHEM", "Chemical", "CHEMICAL") and not e.text.isdigit()
+    ]
 
     if drug_entities:
         logger.info("NER found %d drug entities", len(drug_entities))
