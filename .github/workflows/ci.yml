@@ -34,17 +34,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo apt-get clean
+          df -h /
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          load: true
-          tags: pillchecker-api:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build and tag Docker image
+        run: |
+          docker compose build api
+          docker tag pillchecker-api-api pillchecker-api:ci
 
       - name: Start API
         run: >
