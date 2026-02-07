@@ -96,7 +96,7 @@ echo ""
 echo "=== POST /interactions ==="
 INTERACTIONS=$(curl -sf -X POST "$BASE_URL/interactions" \
     -H "Content-Type: application/json" \
-    -d '{"drugs": ["ibuprofen", "warfarin"]}')
+    -d '{"drugs": ["ibuprofen", "aspirin"]}')
 
 assert_eq "safe" "$(echo "$INTERACTIONS" | jq -r '.safe')" "false"
 assert_eq "severity" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].severity')" "moderate"

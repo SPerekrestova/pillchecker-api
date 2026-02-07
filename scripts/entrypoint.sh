@@ -7,9 +7,9 @@ echo "Checking database at $DB_PATH..."
 
 if [ ! -f "$DB_PATH" ]; then
     echo "Database not found. Bootstrapping with sample data..."
-    # Bootstrap with 1000 records so the app is functional immediately.
+    # Bootstrap with 5000 records so the app is functional immediately.
     # The user can run a full sync later.
-    python scripts/sync_fda_data.py 1000
+    python scripts/sync_fda_data.py 5000
 else
     echo "Database found."
 fi

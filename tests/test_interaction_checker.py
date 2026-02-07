@@ -39,7 +39,6 @@ class TestInteractionChecker:
         result = interaction_checker.check(["ibuprofen", "warfarin"])
         assert result["safe"] is False
         assert len(result["interactions"]) == 1
-        # Should be major (Warfarin label says "Do not use with ibuprofen") or moderate
         assert result["interactions"][0]["severity"] in ["major", "moderate"]
 
     def test_two_safe_drugs(self):
@@ -49,7 +48,6 @@ class TestInteractionChecker:
 
     def test_three_drugs_multiple_interactions(self):
         result = interaction_checker.check(["ibuprofen", "warfarin", "aspirin"])
-        # Expecting multiple interactions
         assert result["safe"] is False
         assert len(result["interactions"]) >= 2
 
