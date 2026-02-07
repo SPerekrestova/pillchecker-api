@@ -38,6 +38,15 @@ def setup_db(conn: sqlite3.Connection):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generic ON labels(generic_name)")
 
+def infer_severity(text: str) -> str:
+    if not text:
+        return "unknown"
+    if RX_CRITICAL.search(text):
+        return "major"
+    if RX_WARNING.search(text):
+        return "moderate"
+    return "minor"
+
 def parse_record(record: dict):
     openfda = record.get("openfda", {})
     rxcuis = openfda.get("rxcui", [])
