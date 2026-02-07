@@ -16,3 +16,6 @@ models/
 PROGRESS.md
 CLAUDE.md
 .idea
+
+.gemini/
+gha-creds-*.json
