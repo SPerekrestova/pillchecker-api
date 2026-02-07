@@ -13,6 +13,9 @@ models/
 *.bin
 *.safetensors
 .DS_Store
-PROGRESS.md
-CLAUDE.md
+.claude
+docs
 .idea
+
+.gemini/
+gha-creds-*.json

@@ -32,6 +32,11 @@ def load_model() -> None:
     )
 
 
+def is_loaded() -> bool:
+    """Check if the NER pipeline is loaded."""
+    return _ner_pipeline is not None
+
+
 def predict(text: str) -> list[Entity]:
     """Extract drug/chemical entities from text.
 

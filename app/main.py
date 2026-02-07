@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from app.api.analyze import router as analyze_router
 from app.api.health import router as health_router
 from app.api.interactions import router as interactions_router
-from app.data import ddinter_store
+from app.data import fda_store
 from app.nlp import ner_model
 
 logger = logging.getLogger(__name__)
@@ -18,8 +18,8 @@ async def lifespan(app: FastAPI):
     ner_model.load_model()
     logger.info("NER model loaded.")
     logger.info("Loading interaction data...")
-    ddinter_store.load()
-    logger.info("Loaded %d interaction pairs.", ddinter_store.interaction_count())
+    fda_store.load()
+    logger.info("Loaded %d drug labels.", fda_store.interaction_count())
     yield
 
 

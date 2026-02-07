@@ -30,7 +30,11 @@ RUN python -c "from transformers import pipeline; pipeline('ner', model='OpenMed
 
 # App code comes last — most frequently changing layer
 COPY --from=builder /app/app /app/app
+COPY scripts/ /app/scripts/
+
+RUN chmod +x /app/scripts/entrypoint.sh
 
 EXPOSE 8000
 
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
