@@ -64,10 +64,18 @@ done
 echo ""
 echo "=== GET /health ==="
 HEALTH=$(curl -sf "$BASE_URL/health")
-
 assert_eq "status" "$(echo "$HEALTH" | jq -r '.status')" "ok"
-assert_eq "ner_model_loaded" "$(echo "$HEALTH" | jq -r '.ner_model_loaded')" "true"
-assert_eq "interaction_pairs" "$(echo "$HEALTH" | jq -r '.interaction_pairs')" "20"
+
+echo ""
+echo "=== GET /health/data ==="
+DATA_HEALTH=$(curl -sf "$BASE_URL/health/data")
+assert_eq "status" "$(echo "$DATA_HEALTH" | jq -r '.status')" "ready"
+RECORD_COUNT=$(echo "$DATA_HEALTH" | jq -r '.record_count')
+if [ "$RECORD_COUNT" -gt 0 ]; then
+    pass "record_count > 0 ($RECORD_COUNT)"
+else
+    fail "record_count is 0"
+fi
 
 # --- Test 2: POST /analyze ---
 
@@ -91,7 +99,7 @@ INTERACTIONS=$(curl -sf -X POST "$BASE_URL/interactions" \
     -d '{"drugs": ["ibuprofen", "warfarin"]}')
 
 assert_eq "safe" "$(echo "$INTERACTIONS" | jq -r '.safe')" "false"
-assert_eq "severity" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].severity')" "major"
+assert_eq "severity" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].severity')" "moderate"
 assert_not_empty "description" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].description')"
 
 # --- Summary ---

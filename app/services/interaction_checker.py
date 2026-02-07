@@ -1,13 +1,8 @@
-"""Interaction checker — looks up drug pairs in the DDInter store.
-
-Accepts drug names (not RxCUIs) since DDInter is keyed by name.
-In the future, when using DrugBank or another RxCUI-keyed source,
-this can be updated to accept RxCUIs instead.
-"""
+"""Interaction checker — looks up drug pairs in the FDA Open Data store."""
 
 import logging
 
-from app.data.ddinter_store import Interaction, check_interaction
+from app.data.fda_store import Interaction, check_interaction
 
 logger = logging.getLogger(__name__)
 
