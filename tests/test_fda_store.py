@@ -10,7 +10,8 @@ def mock_db(tmp_path):
     conn = sqlite3.connect(db_path)
     conn.execute("""
         CREATE TABLE labels (
-            rxcui TEXT PRIMARY KEY, 
+            id TEXT PRIMARY KEY,
+            rxcui TEXT, 
             generic_name TEXT, 
             brand_name TEXT, 
             interactions TEXT, 
@@ -19,10 +20,16 @@ def mock_db(tmp_path):
             last_updated TEXT
         )
     """)
-    # Add test data
+    # Add test data: multiple labels for Ibuprofen with different severities
+    # Label 1: Moderate interaction with warfarin
     conn.execute("""
-        INSERT INTO labels (rxcui, generic_name, brand_name, interactions, contraindications, warnings) VALUES 
-        ('1', 'IBUPROFEN', 'ADVIL', 'May interact with warfarin.', 'Do not use with aspirin.', 'Caution with naproxen.')
+        INSERT INTO labels (id, rxcui, generic_name, brand_name, interactions, contraindications, warnings) VALUES 
+        ('label_1', '1', 'IBUPROFEN', 'ADVIL', 'May interact with warfarin.', '', '')
+    """)
+    # Label 2: Major (contraindicated) interaction with aspirin
+    conn.execute("""
+        INSERT INTO labels (id, rxcui, generic_name, brand_name, interactions, contraindications, warnings) VALUES 
+        ('label_2', '1', 'IBUPROFEN', 'MOTRIN', '', 'Do not use with aspirin.', '')
     """)
     conn.commit()
     conn.close()
@@ -31,6 +38,17 @@ def mock_db(tmp_path):
     fda_store.DB_PATH = db_path
     fda_store.load()
     return db_path
+
+def test_check_interaction_aggregates_severity(mock_db):
+    # Should find the moderate interaction from label_1
+    res_mod = fda_store.check_interaction("ibuprofen", "warfarin")
+    assert res_mod is not None
+    assert res_mod.severity == "moderate"
+
+    # Should find the major interaction from label_2
+    res_major = fda_store.check_interaction("ibuprofen", "aspirin")
+    assert res_major is not None
+    assert res_major.severity == "major"
 
 def test_check_interaction_found_in_interactions(mock_db):
     result = fda_store.check_interaction("ibuprofen", "warfarin")
@@ -44,8 +62,8 @@ def test_check_interaction_found_in_contraindications(mock_db):
     assert result.severity == "major"
 
 def test_case_insensitivity(mock_db):
-    # Search by brand name (caps) and target (lowercase)
-    result = fda_store.check_interaction("ASPIRIN", "ADVIL")
+    # Search by generic name (caps) and target (lowercase)
+    result = fda_store.check_interaction("IBUPROFEN", "aspirin")
     assert result is not None
     assert result.severity == "major"
 
@@ -59,4 +77,4 @@ def test_no_interaction_found(mock_db):
     assert result is None
 
 def test_interaction_count(mock_db):
-    assert fda_store.interaction_count() == 1
+    assert fda_store.interaction_count() == 2
