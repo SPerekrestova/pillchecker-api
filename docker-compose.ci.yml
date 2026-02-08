@@ -3,6 +3,7 @@
 services:
   api:
     image: pillchecker-api:ci
+    entrypoint: ["/app/scripts/ci-startup.sh"]
     volumes: []
     environment:
       - HF_HOME=/app/models

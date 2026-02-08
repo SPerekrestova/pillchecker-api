@@ -32,9 +32,9 @@ RUN python -c "from transformers import pipeline; pipeline('ner', model='OpenMed
 COPY --from=builder /app/app /app/app
 COPY scripts/ /app/scripts/
 
-RUN chmod +x /app/scripts/entrypoint.sh
+RUN chmod +x /app/scripts/prod-startup.sh /app/scripts/ci-startup.sh
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/scripts/entrypoint.sh"]
+ENTRYPOINT ["/app/scripts/prod-startup.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
