@@ -14,7 +14,8 @@ models/
 *.safetensors
 .DS_Store
 .claude
-docs
+docs/*
+!docs/openapi.json
 .idea
 
 .gemini/
