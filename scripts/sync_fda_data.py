@@ -11,8 +11,10 @@ import logging
 import re
 import sys
 import asyncio
+import tempfile
 from pathlib import Path
 import httpx
+import ijson
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -89,40 +91,59 @@ async def sync_data(limit: int | None = 1000):
     with sqlite3.connect(DB_PATH) as conn:
         setup_db(conn)
         total_synced = 0
+        
+        # Optimize SQLite for bulk inserts
+        conn.execute("PRAGMA synchronous = OFF")
+        conn.execute("PRAGMA journal_mode = WAL")
 
         for url in urls:
             if limit and total_synced >= limit:
                 break
 
             logger.info(f"Downloading {url}...")
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
             
-            with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
-                json_filename = z.namelist()[0]
-                with z.open(json_filename) as f:
-                    data = json.load(f)
-                    records = data.get("results", [])
-            
-            logger.info(f"Processing {len(records)} records from partition...")
-            for record in records:
-                parsed = parse_record(record)
-                if not parsed:
-                    continue
-                    
-                conn.execute("""
-                    INSERT OR REPLACE INTO labels 
-                    (rxcui, generic_name, brand_name, interactions, contraindications, warnings, last_updated)
-                    VALUES (:rxcui, :generic_name, :brand_name, :interactions, :contraindications, :warnings, :last_updated)
-                """, parsed)
+            # Download to a temporary file to save RAM
+            with tempfile.NamedTemporaryFile(suffix=".zip") as tmp_file:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with client.stream("GET", url) as resp:
+                        resp.raise_for_status()
+                        for chunk in resp.aiter_bytes():
+                            tmp_file.write(chunk)
+                tmp_file.flush()
                 
-                total_synced += 1
-                if limit and total_synced >= limit:
-                    break
+                logger.info(f"Processing records from partition...")
+                
+                try:
+                    with zipfile.ZipFile(tmp_file.name) as z:
+                        json_filename = z.namelist()[0]
+                        with z.open(json_filename) as f:
+                            # Use ijson for memory-efficient streaming parsing
+                            # 'results.item' iterates over items in the "results" array
+                            for record in ijson.items(f, 'results.item'):
+                                parsed = parse_record(record)
+                                if not parsed:
+                                    continue
+                                    
+                                conn.execute("""
+                                    INSERT OR REPLACE INTO labels 
+                                    (rxcui, generic_name, brand_name, interactions, contraindications, warnings, last_updated)
+                                    VALUES (:rxcui, :generic_name, :brand_name, :interactions, :contraindications, :warnings, :last_updated)
+                                """, parsed)
+                                
+                                total_synced += 1
+                                
+                                # Commit in batches to keep transaction size manageable
+                                if total_synced % 1000 == 0:
+                                    conn.commit()
+                                    logger.info(f"Synced {total_synced} records...")
+
+                                if limit and total_synced >= limit:
+                                    break
+                except zipfile.BadZipFile:
+                    logger.error(f"Failed to unzip {url}. Skipping.")
+                    continue
             
-            conn.commit()
-            logger.info(f"Total synced so far: {total_synced}")
+            conn.commit() # Commit after each partition
 
     logger.info(f"Successfully synced {total_synced} records to {DB_PATH}")
 

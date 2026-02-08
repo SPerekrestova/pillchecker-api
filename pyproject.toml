@@ -10,6 +10,7 @@ dependencies = [
     "torch>=2.5.0",
     "httpx>=0.28.0",
     "pydantic>=2.10.0",
+    "ijson>=3.4.0.post0",
 ]
 
 [dependency-groups]
