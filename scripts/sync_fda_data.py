@@ -32,7 +32,8 @@ RX_WARNING = re.compile(r"\b(caution|monitor|warning|risk|avoid)\b", re.IGNORECA
 def setup_db(conn: sqlite3.Connection):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS labels (
-            rxcui TEXT PRIMARY KEY,
+            id TEXT PRIMARY KEY,
+            rxcui TEXT,
             generic_name TEXT,
             brand_name TEXT,
             interactions TEXT,
@@ -42,6 +43,7 @@ def setup_db(conn: sqlite3.Connection):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generic ON labels(generic_name)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_brand ON labels(brand_name)")
 
 def infer_severity(text: str) -> str:
     if not text:
@@ -54,16 +56,24 @@ def infer_severity(text: str) -> str:
 
 def parse_record(record: dict):
     openfda = record.get("openfda", {})
-    rxcuis = openfda.get("rxcui", [])
-    if not rxcuis:
-        return None
     
-    rxcui = rxcuis[0]
+    # Use the FDA's unique record ID instead of RxCUI as the primary key
+    label_id = record.get("id")
+    if not label_id:
+        return None
+
     generic_names = openfda.get("generic_name", [])
     brand_names = openfda.get("brand_name", [])
     
+    # If we don't have a name, we can't search for it later
+    if not generic_names and not brand_names:
+        return None
+
+    rxcuis = openfda.get("rxcui", [])
+    
     return {
-        "rxcui": rxcui,
+        "id": label_id,
+        "rxcui": rxcuis[0] if rxcuis else None,
         "generic_name": generic_names[0] if generic_names else None,
         "brand_name": brand_names[0] if brand_names else None,
         "interactions": " ".join(record.get("drug_interactions", []) or []),
@@ -126,8 +136,8 @@ async def sync_data(limit: int | None = 1000):
                                     
                                 conn.execute("""
                                     INSERT OR REPLACE INTO labels 
-                                    (rxcui, generic_name, brand_name, interactions, contraindications, warnings, last_updated)
-                                    VALUES (:rxcui, :generic_name, :brand_name, :interactions, :contraindications, :warnings, :last_updated)
+                                    (id, rxcui, generic_name, brand_name, interactions, contraindications, warnings, last_updated)
+                                    VALUES (:id, :rxcui, :generic_name, :brand_name, :interactions, :contraindications, :warnings, :last_updated)
                                 """, parsed)
                                 
                                 total_synced += 1

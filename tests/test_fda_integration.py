@@ -7,11 +7,21 @@ from app.services import interaction_checker
 def mock_db(tmp_path):
     db_path = tmp_path / "test_fda.db"
     conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE labels (generic_name TEXT, brand_name TEXT, interactions TEXT, contraindications TEXT, warnings TEXT)")
+    conn.execute("""
+        CREATE TABLE labels (
+            id TEXT PRIMARY KEY,
+            generic_name TEXT, 
+            brand_name TEXT, 
+            interactions TEXT, 
+            contraindications TEXT, 
+            warnings TEXT
+        )
+    """)
     
     # Add some test data
     conn.execute("""
-        INSERT INTO labels VALUES ('IBUPROFEN', 'ADVIL', 'May interact with warfarin.', 'Do not use with aspirin.', '')
+        INSERT INTO labels (id, generic_name, brand_name, interactions, contraindications, warnings) 
+        VALUES ('1', 'IBUPROFEN', 'ADVIL', 'May interact with warfarin.', 'Do not use with aspirin.', '')
     """)
     conn.commit()
     
