@@ -17,7 +17,10 @@ import httpx
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path("data/fda_interactions.db")
+# Use absolute path to ensure consistency regardless of where the script is run from.
+PROJECT_ROOT = Path(__file__).parent.parent
+DB_PATH = PROJECT_ROOT / "data" / "fda_interactions.db"
+
 DOWNLOAD_JSON_URL = "https://api.fda.gov/download.json"
 
 # Regex for basic severity inference
