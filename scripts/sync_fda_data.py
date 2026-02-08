@@ -107,7 +107,7 @@ async def sync_data(limit: int | None = 1000):
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     async with client.stream("GET", url) as resp:
                         resp.raise_for_status()
-                        for chunk in resp.aiter_bytes():
+                        async for chunk in resp.aiter_bytes():
                             tmp_file.write(chunk)
                 tmp_file.flush()
                 
