@@ -4,6 +4,7 @@ services:
   api:
     image: pillchecker-api:ci
     entrypoint: ["/app/scripts/ci-startup.sh"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes: []
     environment:
       - HF_HOME=/app/models
