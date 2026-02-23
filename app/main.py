@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.analyze import router as analyze_router
 from app.api.health import router as health_router
@@ -28,6 +29,19 @@ app = FastAPI(
     description="Medication interaction checker",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+# CORS: only needed for local development (different ports).
+# In production, nginx serves both frontend and API on the same origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8080",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
 app.include_router(health_router)
