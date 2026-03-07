@@ -33,6 +33,7 @@ def _cache_set(key: str, value: object) -> None:
 class DrugInfo:
     rxcui: str
     name: str
+    score: float = 0.0
     synonym: str | None = None
     tty: str | None = None  # Term type (IN=ingredient, BN=brand name, etc.)
 
@@ -86,6 +87,7 @@ async def approximate_term(term: str) -> list[DrugInfo]:
         results.append(DrugInfo(
             rxcui=c.get("rxcui", ""),
             name=c.get("name", ""),
+            score=float(c.get("score", "0")),
         ))
     _cache_set(cache_key, results)
     return results

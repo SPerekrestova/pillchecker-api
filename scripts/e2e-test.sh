@@ -94,14 +94,15 @@ assert_eq "drugs[0] has form key" "$(echo "$ANALYZE" | jq 'has("drugs") and (.dr
 assert_not_empty "raw_text" "$(echo "$ANALYZE" | jq -r '.raw_text')"
 
 echo ""
-echo "=== POST /analyze (short text — response structure) ==="
-# NLP model may return results for any text; verify response shape only.
-ANALYZE_SHORT=$(curl -sf -X POST "$BASE_URL/analyze" \
+echo "=== POST /analyze (no drugs found) ==="
+# Requires score-filtering fix: common words like 'hello'/'world' matched
+# RxNorm brand names at score ~3.98, well below the 6.0 threshold.
+ANALYZE_EMPTY=$(curl -sf -X POST "$BASE_URL/analyze" \
     -H "Content-Type: application/json" \
     ${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"} \
     -d '{"text": "hello world"}')
-assert_eq "drugs key is array" "$(echo "$ANALYZE_SHORT" | jq '.drugs | type')" '"array"'
-assert_not_empty "raw_text present" "$(echo "$ANALYZE_SHORT" | jq -r '.raw_text')"
+assert_eq "empty drugs array" "$(echo "$ANALYZE_EMPTY" | jq '.drugs | length')" "0"
+assert_not_empty "raw_text present" "$(echo "$ANALYZE_EMPTY" | jq -r '.raw_text')"
 
 echo ""
 echo "=== POST /analyze (empty text → 422) ==="
