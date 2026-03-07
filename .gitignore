@@ -20,3 +20,4 @@ docs/*
 
 .gemini/
 gha-creds-*.json
+.worktrees/
