@@ -8,6 +8,7 @@ from app.api.analyze import router as analyze_router
 from app.api.health import router as health_router
 from app.api.interactions import router as interactions_router
 from app.data import fda_store
+from app.middleware.api_key import APIKeyMiddleware
 from app.nlp import ner_model
 
 logger = logging.getLogger(__name__)
@@ -41,8 +42,10 @@ app.add_middleware(
         "http://localhost:3000",
     ],
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
+
+app.add_middleware(APIKeyMiddleware)
 
 app.include_router(health_router)
 app.include_router(analyze_router)
