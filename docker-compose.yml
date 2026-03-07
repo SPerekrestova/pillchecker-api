@@ -1,14 +1,15 @@
 services:
   api:
     build: .
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     volumes:
       - model-cache:/app/models
       - ./data:/app/data
     environment:
       - HF_HOME=/app/models
       - HF_TOKEN=${HF_TOKEN:-}
+      - API_KEY=${API_KEY}
     restart: unless-stopped
 
   nginx:
@@ -18,7 +19,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./frontend-dist:/usr/share/nginx/html:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - api
     restart: unless-stopped

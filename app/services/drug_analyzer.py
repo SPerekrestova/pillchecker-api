@@ -75,6 +75,13 @@ async def _enrich_ner_results(
     return results
 
 
+
+# Minimum approximate-term score to accept a fallback match.
+# Real drug names score ~10+; false positives (common English words
+# matched to brand names like "Hello Bello") score <4.
+_MIN_APPROX_SCORE = 6.0
+
+
 async def _rxnorm_fallback(text: str, dosage_str: str | None) -> list[dict]:
     """Try to identify drugs by sending text blocks to RxNorm approximate search."""
     # Split into words, try the longest blocks first
@@ -89,21 +96,33 @@ async def _rxnorm_fallback(text: str, dosage_str: str | None) -> list[dict]:
         tried.add(clean.lower())
 
         candidates = await rxnorm_client.approximate_term(clean)
-        if candidates:
-            best = candidates[0]
-            # Look up details to get the proper drug name
-            details = await rxnorm_client.get_drug_details(best.rxcui)
-            name = details.get("name", best.name) if details else best.name
+        if not candidates:
+            continue
 
-            results.append({
-                "rxcui": best.rxcui,
-                "name": name,
-                "dosage": dosage_str,
-                "form": None,
-                "source": "rxnorm_fallback",
-                "confidence": 0.5,  # Lower confidence for fallback
-            })
-            # Only return the first match in fallback mode
-            break
+        best = candidates[0]
+
+        # Reject weak matches — common English words can match brand names
+        # (e.g. "hello" → "Hello Bello" at score 3.98).
+        if best.score < _MIN_APPROX_SCORE:
+            continue
+
+        # Look up details to get the proper drug name
+        details = await rxnorm_client.get_drug_details(best.rxcui)
+        name = details.get("name", best.name) if details else best.name
+
+        # Skip results where we couldn't resolve a non-empty drug name
+        if not name:
+            continue
+
+        results.append({
+            "rxcui": best.rxcui,
+            "name": name,
+            "dosage": dosage_str,
+            "form": None,
+            "source": "rxnorm_fallback",
+            "confidence": 0.5,  # Lower confidence for fallback
+        })
+        # Only return the first match in fallback mode
+        break
 
     return results

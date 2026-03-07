@@ -76,3 +76,23 @@ jobs:
       - name: Stop containers
         if: always()
         run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down
+
+  deploy:
+    name: Deploy
+    needs: integration-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: 2222
+          script: |
+            set -e
+            cd ~/pillchecker-api
+            git pull origin main
+            docker compose up -d --build
+            echo "Deploy complete"
