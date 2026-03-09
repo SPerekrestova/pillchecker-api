@@ -78,3 +78,42 @@ def test_no_interaction_found(mock_db):
 
 def test_interaction_count(mock_db):
     assert fda_store.interaction_count() == 2
+
+
+class TestExtractSentences:
+    def test_extracts_matching_sentence_and_next(self):
+        text = "First sentence. Caution with warfarin use. Monitor INR levels. Last sentence."
+        result = fda_store._extract_sentences(text, text.index("warfarin"), text.index("warfarin") + 8)
+        assert result == "Caution with warfarin use. Monitor INR levels."
+
+    def test_match_in_last_sentence(self):
+        text = "First sentence. Avoid aspirin."
+        result = fda_store._extract_sentences(text, text.index("aspirin"), text.index("aspirin") + 7)
+        assert result == "Avoid aspirin."
+
+    def test_match_in_first_sentence(self):
+        text = "Warfarin may cause bleeding. Monitor closely. Other info."
+        result = fda_store._extract_sentences(text, 0, 8)
+        assert result == "Warfarin may cause bleeding. Monitor closely."
+
+    def test_long_text_truncated_within_limit(self):
+        long_sentence = "A" * 300 + " warfarin " + "B" * 300 + ". Next sentence here."
+        result = fda_store._extract_sentences(long_sentence, 300, 308)
+        assert len(result) <= 500
+
+    def test_long_text_truncated_at_sentence_boundary(self):
+        text = "Start here. " + "Warfarin interacts with many drugs. " * 15 + "Final note."
+        result = fda_store._extract_sentences(text, text.index("Warfarin"), text.index("Warfarin") + 8)
+        assert len(result) <= 500
+        assert result.endswith(".")
+
+    def test_no_sentence_breaks(self):
+        text = "warfarin interacts with ibuprofen"
+        result = fda_store._extract_sentences(text, 0, 8)
+        assert result == text
+
+    def test_no_ellipsis_wrapping(self):
+        text = "Use caution with warfarin. Monitor levels."
+        result = fda_store._extract_sentences(text, text.index("warfarin"), text.index("warfarin") + 8)
+        assert not result.startswith("...")
+        assert not result.endswith("...")
