@@ -18,6 +18,45 @@ class Interaction:
     description: str
     management: str
 
+_SENTENCE_RE = re.compile(r'(?<=[.!?])\s+')
+_MAX_DESCRIPTION = 500
+
+
+def _extract_sentences(text: str, match_start: int, match_end: int) -> str:
+    """Return the sentence containing the match plus the next sentence, capped at _MAX_DESCRIPTION chars."""
+    # Split text into sentences with their positions
+    sentences: list[tuple[int, int]] = []
+    prev = 0
+    for m in _SENTENCE_RE.finditer(text):
+        sentences.append((prev, m.start()))
+        prev = m.end()
+    sentences.append((prev, len(text)))
+
+    # Find the sentence containing the match
+    hit_idx = 0
+    for i, (s, e) in enumerate(sentences):
+        if s <= match_start < e:
+            hit_idx = i
+            break
+
+    # Take the hit sentence + one following sentence
+    end_idx = min(hit_idx + 2, len(sentences))
+    start_pos = sentences[hit_idx][0]
+    end_pos = sentences[end_idx - 1][1]
+    result = text[start_pos:end_pos].strip()
+
+    if len(result) > _MAX_DESCRIPTION:
+        # Truncate at last sentence boundary within limit
+        truncated = result[:_MAX_DESCRIPTION]
+        last_period = truncated.rfind('.')
+        if last_period > 0:
+            result = truncated[:last_period + 1]
+        else:
+            result = truncated[:_MAX_DESCRIPTION - 1].rstrip() + "…"
+
+    return result
+
+
 def load():
     """Open DB connection."""
     global _conn
@@ -80,17 +119,15 @@ def _find_in_label(target_drug: str, label_drug: str) -> Interaction | None:
             # If we haven't found a match yet, or this one is more severe, keep it.
             if best_match is None or severity_rank[current_severity] > severity_rank[best_match.severity]:
                 
-                # Extract snippet
+                # Extract sentence(s) containing the match
                 match = pattern.search(full_text)
-                start = max(0, match.start() - 100)
-                end = min(len(full_text), match.end() + 100)
-                description = full_text[start:end].strip()
-                
+                description = _extract_sentences(full_text, match.start(), match.end())
+
                 best_match = Interaction(
                     drug_a=label_drug,
                     drug_b=target_drug,
                     severity=current_severity,
-                    description=f"...{description}...",
+                    description=description,
                     management="See official FDA label for complete prescribing information."
                 )
                 
