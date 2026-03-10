@@ -79,6 +79,7 @@ async def _enrich_ner_results(
             "confidence": entity.score,
         })
 
+    results.sort(key=lambda r: r["confidence"], reverse=True)
     return results
 
 
