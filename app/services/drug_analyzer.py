@@ -40,7 +40,10 @@ async def analyze(text: str) -> list[dict]:
 
     if drug_entities:
         logger.info("NER found %d drug entities", len(drug_entities))
-        return await _enrich_ner_results(drug_entities, dosage_str)
+        enriched = await _enrich_ner_results(drug_entities, dosage_str)
+        if enriched:
+            return enriched
+        logger.info("All NER entities filtered out, trying RxNorm fallback")
 
     # Pass 2: Fallback — try RxNorm approximate matching on text blocks
     logger.info("NER found 0 drugs, trying RxNorm fallback")
@@ -62,6 +65,10 @@ async def _enrich_ner_results(
         seen_names.add(name.lower())
 
         rxcui = await rxnorm_client.get_rxcui(name)
+
+        if rxcui is None:
+            logger.info("Skipping NER entity '%s' — not found in RxNorm", name)
+            continue
 
         results.append({
             "rxcui": rxcui,
