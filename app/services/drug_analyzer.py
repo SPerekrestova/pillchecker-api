@@ -46,7 +46,7 @@ async def analyze(text: str) -> list[dict]:
         logger.info("All NER entities filtered out, trying RxNorm fallback")
 
     # Pass 2: Fallback — try RxNorm approximate matching on text blocks
-    logger.info("NER found 0 drugs, trying RxNorm fallback")
+    logger.info("Falling through to RxNorm fallback")
     return await _rxnorm_fallback(text, dosage_str)
 
 
