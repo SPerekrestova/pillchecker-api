@@ -1,46 +1,99 @@
-"""Interaction checker — looks up drug pairs in the FDA Open Data store."""
+"""Interaction checker — looks up drug pairs via BioMCP."""
 
+import asyncio
 import logging
 
-from app.data.fda_store import Interaction, check_interaction
+from app.clients import biomcp_client
+from app.nlp import severity_classifier
 
 logger = logging.getLogger(__name__)
 
+_MANAGEMENT = "Consult a healthcare professional for guidance."
 
-def check(drug_names: list[str]) -> dict:
+
+async def check(drug_names: list[str]) -> dict:
     """Check interactions between all pairs of drugs.
 
-    Args:
-        drug_names: List of drug names (generic, lowercase preferred).
+    Returns dict with:
+      - interactions: list of interaction dicts
+      - safe: bool | None (None if data source unavailable)
+      - error: str | None
 
-    Returns:
-        Dict with:
-          - interactions: list of interaction dicts
-          - safe: bool (True if no interactions found)
+    Note: Per-drug BioMCP errors (malformed response, drug not found) return []
+    silently, so safe=True means "no interactions detected" not "guaranteed safe".
     """
-    interactions = []
+    if len(drug_names) < 2:
+        return {"interactions": [], "safe": True, "error": None}
 
+    # Fetch interaction lists for each drug (cached per drug)
+    try:
+        unique_names = list(dict.fromkeys(drug_names))  # deduplicate, preserve order
+        results = await asyncio.gather(
+            *[biomcp_client.get_interactions(name) for name in unique_names]
+        )
+        drug_interactions: dict[str, list[dict]] = dict(zip(unique_names, results))
+    except biomcp_client.BioMCPUnavailableError:
+        logger.error("BioMCP unavailable — cannot check interactions")
+        return {
+            "interactions": [],
+            "safe": None,
+            "error": "Drug interaction data temporarily unavailable",
+        }
+
+    # Check all pairs
+    interactions = []
     for i, drug_a in enumerate(drug_names):
         for drug_b in drug_names[i + 1:]:
-            result = check_interaction(drug_a, drug_b)
+            result = _find_interaction(drug_a, drug_b, drug_interactions)
             if result:
                 logger.info(
                     "Interaction found: %s + %s = %s",
-                    drug_a, drug_b, result.severity,
+                    drug_a, drug_b, result["severity"],
                 )
-                interactions.append(_format_interaction(result))
+                interactions.append(result)
 
     return {
         "interactions": interactions,
         "safe": len(interactions) == 0,
+        "error": None,
     }
 
 
-def _format_interaction(interaction: Interaction) -> dict:
+def _find_interaction(
+    drug_a: str,
+    drug_b: str,
+    drug_interactions: dict[str, list[dict]],
+) -> dict | None:
+    """Check if drug_b appears in drug_a's interaction list, or vice versa."""
+    # Check A's list for B
+    match = _match_in_list(drug_b, drug_interactions.get(drug_a, []))
+    if match:
+        return _format(drug_a, drug_b, match)
+
+    # Check B's list for A
+    match = _match_in_list(drug_a, drug_interactions.get(drug_b, []))
+    if match:
+        return _format(drug_a, drug_b, match)
+
+    return None
+
+
+def _match_in_list(target: str, interactions: list[dict]) -> dict | None:
+    """Find target drug name in a list of interaction entries (case-insensitive)."""
+    target_lower = target.lower()
+    for entry in interactions:
+        if entry.get("drug", "").lower() == target_lower:
+            return entry
+    return None
+
+
+def _format(drug_a: str, drug_b: str, match: dict) -> dict:
+    """Format an interaction entry for the API response."""
+    description = match.get("description", "")
     return {
-        "drug_a": interaction.drug_a,
-        "drug_b": interaction.drug_b,
-        "severity": interaction.severity,
-        "description": interaction.description,
-        "management": interaction.management,
+        "drug_a": drug_a,
+        "drug_b": drug_b,
+        "severity": severity_classifier.classify(description),
+        "description": description or "Interaction reported in DrugBank.",
+        "management": _MANAGEMENT,
     }
