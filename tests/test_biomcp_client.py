@@ -2,7 +2,7 @@
 
 import time
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock, call
 from app.clients import biomcp_client
 
 
@@ -81,12 +81,8 @@ class TestGetInteractions:
     @pytest.mark.asyncio
     async def test_raises_on_connection_error(self, mock_session):
         mock_session.call_tool.side_effect = Exception("Connection refused")
-        with patch("app.clients.biomcp_client.connect", new_callable=AsyncMock) as mock_connect:
-            # connect() leaves _session as the same mock (which still raises)
-            mock_connect.return_value = None
-            with pytest.raises(biomcp_client.BioMCPUnavailableError):
-                await biomcp_client.get_interactions("ibuprofen")
-            mock_connect.assert_called_once()
+        with pytest.raises(biomcp_client.BioMCPUnavailableError):
+            await biomcp_client.get_interactions("ibuprofen")
 
     @pytest.mark.asyncio
     async def test_raises_when_no_session(self):
@@ -117,26 +113,72 @@ class TestGetInteractions:
         )
 
 
+
+class TestConnect:
+    @pytest.fixture(autouse=True)
+    def reset_state(self):
+        orig_session = biomcp_client._session
+        orig_streams = biomcp_client._streams
+        orig_tool = biomcp_client._tool_name
+        biomcp_client._session = None
+        biomcp_client._streams = None
+        biomcp_client._tool_name = "biomcp"
+        yield
+        biomcp_client._session = orig_session
+        biomcp_client._streams = orig_streams
+        biomcp_client._tool_name = orig_tool
+
+    def _make_mock_session(self, tool_names: list[str]) -> AsyncMock:
+        session = AsyncMock()
+        tools_result = MagicMock()
+        tool_mocks = []
+        for n in tool_names:
+            t = MagicMock()
+            t.name = n
+            tool_mocks.append(t)
+        tools_result.tools = tool_mocks
+        session.list_tools.return_value = tools_result
+        return session
+
     @pytest.mark.asyncio
-    async def test_reconnects_on_first_call_tool_failure(self, mock_session):
-        """If call_tool raises on first attempt, connect() is called and the second attempt succeeds."""
-        good_response = MagicMock(
-            content=[MagicMock(text='{"interactions":[{"drug":"Warfarin","description":"Risk."}]}')],
-            isError=False,
-        )
-        mock_session.call_tool.side_effect = [Exception("stale connection"), good_response]
+    async def test_connect_discovers_biomcp_tool_name(self):
+        """connect() calls list_tools() and sets _tool_name to 'biomcp' when present."""
+        mock_session = self._make_mock_session(["biomcp"])
+        mock_streams = AsyncMock()
+        mock_streams.__aenter__.return_value = (AsyncMock(), AsyncMock(), None)
+        mock_streams.__aexit__.return_value = None
 
-        async def fake_connect():
-            # Simulate reconnect restoring the same mock session
-            biomcp_client._session = mock_session
-            mock_session.call_tool.side_effect = None
-            mock_session.call_tool.return_value = good_response
+        with patch("app.clients.biomcp_client.streamable_http_client", return_value=mock_streams), \
+             patch("app.clients.biomcp_client.ClientSession", return_value=mock_session):
+            await biomcp_client.connect()
 
-        with patch("app.clients.biomcp_client.connect", side_effect=fake_connect):
-            result = await biomcp_client.get_interactions("ibuprofen")
+        assert biomcp_client._tool_name == "biomcp"
+        mock_session.list_tools.assert_called_once()
 
-        assert result == [{"drug": "Warfarin", "description": "Risk."}]
-        assert mock_session.call_tool.call_count == 2
+    @pytest.mark.asyncio
+    async def test_connect_discovers_shell_tool_name_pre_0815(self):
+        """connect() falls back to 'shell' for pre-0.8.15 BioMCP versions."""
+        mock_session = self._make_mock_session(["shell"])
+        mock_streams = AsyncMock()
+        mock_streams.__aenter__.return_value = (AsyncMock(), AsyncMock(), None)
+        mock_streams.__aexit__.return_value = None
+
+        with patch("app.clients.biomcp_client.streamable_http_client", return_value=mock_streams), \
+             patch("app.clients.biomcp_client.ClientSession", return_value=mock_session):
+            await biomcp_client.connect()
+
+        assert biomcp_client._tool_name == "shell"
+
+    @pytest.mark.asyncio
+    async def test_connect_degrades_gracefully_on_failure(self):
+        """connect() sets _session=None when the sidecar is unreachable."""
+        mock_streams = AsyncMock()
+        mock_streams.__aenter__.side_effect = Exception("connection refused")
+
+        with patch("app.clients.biomcp_client.streamable_http_client", return_value=mock_streams):
+            await biomcp_client.connect()
+
+        assert biomcp_client._session is None
 
 
 class TestHealthCheck:

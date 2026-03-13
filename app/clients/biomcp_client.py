@@ -22,6 +22,7 @@ BIOMCP_URL = f"{BIOMCP_BASE_URL}/mcp"
 
 _session: ClientSession | None = None
 _streams: AbstractAsyncContextManager | None = None
+_tool_name: str = "biomcp"  # discovered at connect() via list_tools()
 
 # Simple TTL cache: {key: (value, expiry_timestamp)}
 _cache: dict[str, tuple[object, float]] = {}
@@ -51,7 +52,7 @@ async def connect() -> None:
     Silently degrades to _session=None on failure (graceful degradation).
     Callers should handle BioMCPUnavailableError raised by get_interactions().
     """
-    global _session, _streams
+    global _session, _streams, _tool_name
     try:
         _streams = streamable_http_client(BIOMCP_URL)
         read_stream, write_stream, _ = await _streams.__aenter__()
@@ -59,7 +60,18 @@ async def connect() -> None:
             _session = ClientSession(read_stream, write_stream)
             await _session.__aenter__()
             await _session.initialize()
-            logger.info("Connected to BioMCP at %s", BIOMCP_URL)
+            # Discover the actual tool name — versions ≤0.8.14 use "shell",
+            # ≥0.8.15 use "biomcp". Fall back to default if neither is found.
+            tools = await _session.list_tools()
+            names = {t.name for t in tools.tools}
+            if "biomcp" in names:
+                _tool_name = "biomcp"
+            elif "shell" in names:
+                _tool_name = "shell"
+                logger.warning("BioMCP tool named 'shell' (pre-0.8.15); upgrade for 'biomcp'")
+            else:
+                logger.warning("Unexpected BioMCP tool names: %s; defaulting to 'biomcp'", names)
+            logger.info("Connected to BioMCP at %s (tool=%s)", BIOMCP_URL, _tool_name)
         except Exception:
             # Clean up transport if session init fails
             await _streams.__aexit__(None, None, None)
@@ -113,25 +125,13 @@ async def get_interactions(drug_name: str) -> list[dict]:
     if _session is None:
         raise BioMCPUnavailableError("BioMCP session not established")
 
-    result = None
-    for attempt in range(2):
-        try:
-            result = await _session.call_tool(
-                "biomcp",
-                {"command": f"--json get drug {shlex.quote(drug_name)} interactions"},
-            )
-            break
-        except Exception as exc:
-            if attempt == 0:
-                logger.warning("BioMCP call failed, attempting reconnect: %s", exc)
-                await connect()
-                if _session is None:
-                    raise BioMCPUnavailableError(f"BioMCP reconnect failed: {exc}") from exc
-            else:
-                raise BioMCPUnavailableError(f"BioMCP call failed after reconnect: {exc}") from exc
-
-    if result is None:
-        raise BioMCPUnavailableError("BioMCP call_tool did not produce a result")
+    try:
+        result = await _session.call_tool(
+            _tool_name,
+            {"command": f"--json get drug {shlex.quote(drug_name)} interactions"},
+        )
+    except Exception as exc:
+        raise BioMCPUnavailableError(f"BioMCP call failed: {exc}") from exc
     if result.isError:
         raise BioMCPUnavailableError(f"BioMCP returned error for {drug_name}")
 
