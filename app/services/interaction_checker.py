@@ -44,7 +44,7 @@ async def check(drug_names: list[str]) -> dict:
     interactions = []
     for i, drug_a in enumerate(drug_names):
         for drug_b in drug_names[i + 1:]:
-            result = _find_interaction(drug_a, drug_b, drug_interactions)
+            result = await _find_interaction(drug_a, drug_b, drug_interactions)
             if result:
                 logger.info(
                     "Interaction found: %s + %s = %s",
@@ -59,7 +59,7 @@ async def check(drug_names: list[str]) -> dict:
     }
 
 
-def _find_interaction(
+async def _find_interaction(
     drug_a: str,
     drug_b: str,
     drug_interactions: dict[str, list[dict]],
@@ -68,12 +68,12 @@ def _find_interaction(
     # Check A's list for B
     match = _match_in_list(drug_b, drug_interactions.get(drug_a, []))
     if match:
-        return _format(drug_a, drug_b, match)
+        return await _format(drug_a, drug_b, match)
 
     # Check B's list for A
     match = _match_in_list(drug_a, drug_interactions.get(drug_b, []))
     if match:
-        return _format(drug_a, drug_b, match)
+        return await _format(drug_a, drug_b, match)
 
     return None
 
@@ -87,13 +87,15 @@ def _match_in_list(target: str, interactions: list[dict]) -> dict | None:
     return None
 
 
-def _format(drug_a: str, drug_b: str, match: dict) -> dict:
+async def _format(drug_a: str, drug_b: str, match: dict) -> dict:
     """Format an interaction entry for the API response."""
     description = match.get("description", "")
+    loop = asyncio.get_event_loop()
+    severity = await loop.run_in_executor(None, severity_classifier.classify, description)
     return {
         "drug_a": drug_a,
         "drug_b": drug_b,
-        "severity": severity_classifier.classify(description),
+        "severity": severity,
         "description": description or "Interaction reported in DrugBank.",
         "management": _MANAGEMENT,
     }
