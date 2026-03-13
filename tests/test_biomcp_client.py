@@ -33,6 +33,20 @@ class TestGetInteractions:
         assert result[0]["description"] == "Increases bleeding risk."
 
     @pytest.mark.asyncio
+    async def test_call_tool_uses_biomcp_command_schema(self, mock_session):
+        """call_tool must use tool name 'biomcp' with {'command': '--json get drug <name> interactions'}."""
+        mock_session.call_tool.return_value = MagicMock(
+            content=[MagicMock(text='{"name":"ibuprofen","interactions":[{"drug":"Aspirin","description":"May increase bleeding risk."}],"_meta":{}}')],
+            isError=False,
+        )
+        result = await biomcp_client.get_interactions("ibuprofen")
+        mock_session.call_tool.assert_called_once_with(
+            "biomcp",
+            {"command": "--json get drug ibuprofen interactions"},
+        )
+        assert result == [{"drug": "Aspirin", "description": "May increase bleeding risk."}]
+
+    @pytest.mark.asyncio
     async def test_returns_empty_for_no_interactions(self, mock_session):
         mock_session.call_tool.return_value = MagicMock(
             content=[MagicMock(text='{"interactions":[]}')],

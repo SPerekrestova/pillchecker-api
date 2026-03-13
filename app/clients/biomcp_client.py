@@ -111,13 +111,10 @@ async def get_interactions(drug_name: str) -> list[dict]:
     if _session is None:
         raise BioMCPUnavailableError("BioMCP session not established")
 
-    # NOTE: The exact tool name and argument schema below must be verified
-    # after building the sidecar. Run `await _session.list_tools()` during
-    # development to confirm the interface. See Task 2 Step 4a.
     try:
         result = await _session.call_tool(
-            "get",
-            {"entity": "drug", "name": drug_name, "sections": ["interactions"]},
+            "biomcp",
+            {"command": f"--json get drug {drug_name} interactions"},
         )
     except Exception as exc:
         raise BioMCPUnavailableError(f"BioMCP call failed: {exc}") from exc
