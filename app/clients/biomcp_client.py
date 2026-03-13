@@ -113,6 +113,7 @@ async def get_interactions(drug_name: str) -> list[dict]:
     if _session is None:
         raise BioMCPUnavailableError("BioMCP session not established")
 
+    result = None
     for attempt in range(2):
         try:
             result = await _session.call_tool(
@@ -129,6 +130,8 @@ async def get_interactions(drug_name: str) -> list[dict]:
             else:
                 raise BioMCPUnavailableError(f"BioMCP call failed after reconnect: {exc}") from exc
 
+    if result is None:
+        raise BioMCPUnavailableError("BioMCP call_tool did not produce a result")
     if result.isError:
         raise BioMCPUnavailableError(f"BioMCP returned error for {drug_name}")
 

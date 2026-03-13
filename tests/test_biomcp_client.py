@@ -86,6 +86,7 @@ class TestGetInteractions:
             mock_connect.return_value = None
             with pytest.raises(biomcp_client.BioMCPUnavailableError):
                 await biomcp_client.get_interactions("ibuprofen")
+            mock_connect.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_raises_when_no_session(self):
@@ -135,6 +136,7 @@ class TestGetInteractions:
             result = await biomcp_client.get_interactions("ibuprofen")
 
         assert result == [{"drug": "Warfarin", "description": "Risk."}]
+        assert mock_session.call_tool.call_count == 2
 
 
 class TestHealthCheck:
