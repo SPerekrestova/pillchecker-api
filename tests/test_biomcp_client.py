@@ -81,8 +81,11 @@ class TestGetInteractions:
     @pytest.mark.asyncio
     async def test_raises_on_connection_error(self, mock_session):
         mock_session.call_tool.side_effect = Exception("Connection refused")
-        with pytest.raises(biomcp_client.BioMCPUnavailableError):
-            await biomcp_client.get_interactions("ibuprofen")
+        with patch("app.clients.biomcp_client.connect", new_callable=AsyncMock) as mock_connect:
+            # connect() leaves _session as the same mock (which still raises)
+            mock_connect.return_value = None
+            with pytest.raises(biomcp_client.BioMCPUnavailableError):
+                await biomcp_client.get_interactions("ibuprofen")
 
     @pytest.mark.asyncio
     async def test_raises_when_no_session(self):
@@ -111,6 +114,27 @@ class TestGetInteractions:
             "biomcp",
             {"command": "--json get drug 'Co-Amoxiclav 500mg' interactions"},
         )
+
+
+    @pytest.mark.asyncio
+    async def test_reconnects_on_first_call_tool_failure(self, mock_session):
+        """If call_tool raises on first attempt, connect() is called and the second attempt succeeds."""
+        good_response = MagicMock(
+            content=[MagicMock(text='{"interactions":[{"drug":"Warfarin","description":"Risk."}]}')],
+            isError=False,
+        )
+        mock_session.call_tool.side_effect = [Exception("stale connection"), good_response]
+
+        async def fake_connect():
+            # Simulate reconnect restoring the same mock session
+            biomcp_client._session = mock_session
+            mock_session.call_tool.side_effect = None
+            mock_session.call_tool.return_value = good_response
+
+        with patch("app.clients.biomcp_client.connect", side_effect=fake_connect):
+            result = await biomcp_client.get_interactions("ibuprofen")
+
+        assert result == [{"drug": "Warfarin", "description": "Risk."}]
 
 
 class TestHealthCheck:

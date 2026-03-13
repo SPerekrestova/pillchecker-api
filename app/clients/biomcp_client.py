@@ -9,6 +9,7 @@ import logging
 import os
 import shlex
 import time
+from contextlib import AbstractAsyncContextManager
 
 import httpx
 from mcp import ClientSession
@@ -20,7 +21,7 @@ BIOMCP_BASE_URL = os.environ.get("BIOMCP_URL", "http://biomcp:8080/mcp").rsplit(
 BIOMCP_URL = f"{BIOMCP_BASE_URL}/mcp"
 
 _session: ClientSession | None = None
-_streams = None  # holds the context manager references for cleanup
+_streams: AbstractAsyncContextManager | None = None
 
 # Simple TTL cache: {key: (value, expiry_timestamp)}
 _cache: dict[str, tuple[object, float]] = {}
@@ -112,13 +113,21 @@ async def get_interactions(drug_name: str) -> list[dict]:
     if _session is None:
         raise BioMCPUnavailableError("BioMCP session not established")
 
-    try:
-        result = await _session.call_tool(
-            "biomcp",
-            {"command": f"--json get drug {shlex.quote(drug_name)} interactions"},
-        )
-    except Exception as exc:
-        raise BioMCPUnavailableError(f"BioMCP call failed: {exc}") from exc
+    for attempt in range(2):
+        try:
+            result = await _session.call_tool(
+                "biomcp",
+                {"command": f"--json get drug {shlex.quote(drug_name)} interactions"},
+            )
+            break
+        except Exception as exc:
+            if attempt == 0:
+                logger.warning("BioMCP call failed, attempting reconnect: %s", exc)
+                await connect()
+                if _session is None:
+                    raise BioMCPUnavailableError(f"BioMCP reconnect failed: {exc}") from exc
+            else:
+                raise BioMCPUnavailableError(f"BioMCP call failed after reconnect: {exc}") from exc
 
     if result.isError:
         raise BioMCPUnavailableError(f"BioMCP returned error for {drug_name}")
