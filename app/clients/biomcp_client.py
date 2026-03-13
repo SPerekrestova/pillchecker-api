@@ -16,7 +16,8 @@ from mcp.client.streamable_http import streamable_http_client
 
 logger = logging.getLogger(__name__)
 
-BIOMCP_URL = os.environ.get("BIOMCP_URL", "http://biomcp:8080/mcp")
+BIOMCP_BASE_URL = os.environ.get("BIOMCP_URL", "http://biomcp:8080/mcp").rsplit("/mcp", 1)[0]
+BIOMCP_URL = f"{BIOMCP_BASE_URL}/mcp"
 
 _session: ClientSession | None = None
 _streams = None  # holds the context manager references for cleanup
@@ -89,10 +90,9 @@ async def close() -> None:
 
 async def health_check() -> bool:
     """Check if BioMCP sidecar is reachable via its HTTP health endpoint."""
-    base_url = BIOMCP_URL.rsplit("/mcp", 1)[0]
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{base_url}/health")
+            resp = await client.get(f"{BIOMCP_BASE_URL}/health")
             return resp.status_code == 200
     except Exception:
         return False

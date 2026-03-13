@@ -133,3 +133,17 @@ class TestHealthCheck:
             mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_client.get.side_effect = Exception("down")
             assert await biomcp_client.health_check() is False
+
+    @pytest.mark.asyncio
+    async def test_health_check_uses_base_url_not_mcp_path(self):
+        """health_check() must use BIOMCP_BASE_URL for GET /health, not BIOMCP_URL."""
+        with patch("app.clients.biomcp_client.BIOMCP_BASE_URL", "http://testhost:9090"), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_client.get.return_value = mock_resp
+            await biomcp_client.health_check()
+            mock_client.get.assert_called_once_with("http://testhost:9090/health")
