@@ -5,11 +5,27 @@ services:
       - "8000"
     volumes:
       - model-cache:/app/models
-      - ./data:/app/data
     environment:
       - HF_HOME=/app/models
       - HF_TOKEN=${HF_TOKEN:-}
       - API_KEY=${API_KEY}
+      - BIOMCP_URL=http://biomcp:8080/mcp
+    depends_on:
+      biomcp:
+        condition: service_healthy
+    restart: unless-stopped
+
+  biomcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.biomcp
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "biomcp", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
   nginx:
