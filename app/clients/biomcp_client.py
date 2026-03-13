@@ -46,7 +46,7 @@ async def connect() -> None:
     """Establish MCP session with the BioMCP sidecar.
 
     Silently degrades to _session=None on failure (graceful degradation).
-    Callers should check is_connected() or handle BioMCPUnavailableError from get_interactions().
+    Callers should handle BioMCPUnavailableError raised by get_interactions().
     """
     global _session, _streams
     try:

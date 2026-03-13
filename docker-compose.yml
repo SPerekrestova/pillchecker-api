@@ -22,7 +22,7 @@ services:
     expose:
       - "8080"
     healthcheck:
-      test: ["CMD", "biomcp", "health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
