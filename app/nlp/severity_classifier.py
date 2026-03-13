@@ -84,4 +84,4 @@ def _regex_fallback(text: str) -> str:
         return "major"
     if _RX_WARNING.search(text):
         return "moderate"
-    return "minor"
+    return "unknown"

@@ -79,9 +79,9 @@ class TestRegexFallback:
         result = severity_classifier._regex_fallback("Use caution, monitor closely.")
         assert result == "moderate"
 
-    def test_fallback_minor(self):
+    def test_fallback_unknown_for_neutral_text(self):
         result = severity_classifier._regex_fallback("No significant interaction.")
-        assert result == "minor"
+        assert result == "unknown"
 
     def test_classify_uses_fallback_when_unloaded(self):
         assert severity_classifier.classify("contraindicated") == "major"
