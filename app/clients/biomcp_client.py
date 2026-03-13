@@ -7,6 +7,7 @@ from DrugBank via MyChem.info.
 import json
 import logging
 import os
+import shlex
 import time
 
 import httpx
@@ -114,7 +115,7 @@ async def get_interactions(drug_name: str) -> list[dict]:
     try:
         result = await _session.call_tool(
             "biomcp",
-            {"command": f"--json get drug {drug_name} interactions"},
+            {"command": f"--json get drug {shlex.quote(drug_name)} interactions"},
         )
     except Exception as exc:
         raise BioMCPUnavailableError(f"BioMCP call failed: {exc}") from exc

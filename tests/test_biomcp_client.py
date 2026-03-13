@@ -99,6 +99,19 @@ class TestGetInteractions:
         with pytest.raises(biomcp_client.BioMCPUnavailableError):
             await biomcp_client.get_interactions("ibuprofen")
 
+    @pytest.mark.asyncio
+    async def test_drug_name_with_spaces_is_quoted(self, mock_session):
+        """Drug names containing spaces must be shell-quoted in the command string."""
+        mock_session.call_tool.return_value = MagicMock(
+            content=[MagicMock(text='{"interactions":[]}')],
+            isError=False,
+        )
+        await biomcp_client.get_interactions("Co-Amoxiclav 500mg")
+        mock_session.call_tool.assert_called_once_with(
+            "biomcp",
+            {"command": "--json get drug 'Co-Amoxiclav 500mg' interactions"},
+        )
+
 
 class TestHealthCheck:
     @pytest.mark.asyncio
