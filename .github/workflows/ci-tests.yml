@@ -40,30 +40,30 @@ jobs:
           sudo apt-get clean
           df -h /
 
-      - name: Build and tag Docker image
+      - name: Build and tag Docker images
         run: |
-          docker compose build api
+          docker compose build api biomcp
           docker tag pillchecker-api-api pillchecker-api:ci
 
-      - name: Start API
+      - name: Start API and BioMCP
         run: >
           docker compose
           -f docker-compose.yml
           -f docker-compose.ci.yml
-          up -d api
+          up -d api biomcp
 
-      - name: Wait for startup and hydration
+      - name: Wait for API startup
         run: |
-          # Wait for the entrypoint to finish syncing data
           for i in {1..30}; do
-            if curl -s http://localhost:8000/health/data | grep -q '"status":"ready"'; then
-              echo "API and Data ready!"
+            if curl -s http://localhost:8000/health/data | grep -q '"biomcp":"connected"'; then
+              echo "API and BioMCP ready!"
               exit 0
             fi
-            echo "Waiting for API/Data hydration..."
+            echo "Waiting for API and BioMCP... ($i/30)"
             sleep 5
           done
-          echo "Timeout waiting for API"
+          echo "Timeout waiting for API/BioMCP"
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api biomcp
           exit 1
 
       - name: Run smoke tests
@@ -71,7 +71,7 @@ jobs:
 
       - name: Dump logs on failure
         if: failure()
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api biomcp
 
       - name: Stop containers
         if: always()
