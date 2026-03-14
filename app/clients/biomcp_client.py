@@ -102,7 +102,9 @@ async def close() -> None:
 
 
 async def health_check() -> bool:
-    """Check if BioMCP sidecar is reachable via its HTTP health endpoint."""
+    """Check if BioMCP sidecar is reachable and MCP session is active."""
+    if _session is None:
+        return False
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{BIOMCP_BASE_URL}/health")

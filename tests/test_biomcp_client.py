@@ -182,8 +182,15 @@ class TestConnect:
 
 
 class TestHealthCheck:
+    @pytest.fixture(autouse=True)
+    def reset_session(self):
+        orig = biomcp_client._session
+        yield
+        biomcp_client._session = orig
+
     @pytest.mark.asyncio
     async def test_health_check_success(self):
+        biomcp_client._session = AsyncMock()
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -195,6 +202,7 @@ class TestHealthCheck:
 
     @pytest.mark.asyncio
     async def test_health_check_failure(self):
+        biomcp_client._session = AsyncMock()
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -205,6 +213,7 @@ class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_uses_base_url_not_mcp_path(self):
         """health_check() must use BIOMCP_BASE_URL for GET /health, not BIOMCP_URL."""
+        biomcp_client._session = AsyncMock()
         with patch("app.clients.biomcp_client.BIOMCP_BASE_URL", "http://testhost:9090"), \
              patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
@@ -215,3 +224,20 @@ class TestHealthCheck:
             mock_client.get.return_value = mock_resp
             await biomcp_client.health_check()
             mock_client.get.assert_called_once_with("http://testhost:9090/health")
+
+    @pytest.mark.asyncio
+    async def test_health_check_returns_false_when_session_is_none(self):
+        """health_check() must return False if MCP session is not established,
+        even when the HTTP sidecar would respond 200."""
+        biomcp_client._session = None
+        try:
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+                mock_resp = MagicMock()
+                mock_resp.status_code = 200
+                mock_client.get.return_value = mock_resp
+                assert await biomcp_client.health_check() is False
+        finally:
+            biomcp_client._session = None
