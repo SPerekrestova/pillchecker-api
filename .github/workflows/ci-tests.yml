@@ -54,15 +54,16 @@ jobs:
 
       - name: Wait for API startup
         run: |
-          for i in {1..20}; do
+          for i in {1..30}; do
             if curl -s http://localhost:8000/health/data | grep -q '"biomcp":"connected"'; then
               echo "API and BioMCP ready!"
               exit 0
             fi
-            echo "Waiting for API and BioMCP..."
-            sleep 3
+            echo "Waiting for API and BioMCP... ($i/30)"
+            sleep 5
           done
           echo "Timeout waiting for API/BioMCP"
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api biomcp
           exit 1
 
       - name: Run smoke tests
