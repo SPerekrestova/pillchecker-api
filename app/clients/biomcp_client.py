@@ -146,7 +146,13 @@ async def get_interactions(drug_name: str) -> list[dict]:
         else:
             data = json.loads(content_block.text)
             interactions = data.get("interactions", [])
+            drug_names_in_list = [e.get("drug", "?") for e in interactions[:20]]
+            logger.warning(
+                "BioMCP returned %d interactions for %s: %s",
+                len(interactions), drug_name, drug_names_in_list,
+            )
     except (json.JSONDecodeError, IndexError):
+        logger.warning("Failed to parse BioMCP response for %s", drug_name)
         interactions = []
 
     _cache_set(cache_key, interactions)
