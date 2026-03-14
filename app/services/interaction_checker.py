@@ -26,13 +26,24 @@ async def check(drug_names: list[str]) -> dict:
         return {"interactions": [], "safe": True, "error": None}
 
     # Fetch interaction lists for each drug (cached per drug)
-    try:
-        unique_names = list(dict.fromkeys(drug_names))  # deduplicate, preserve order
-        results = await asyncio.gather(
-            *[biomcp_client.get_interactions(name) for name in unique_names]
-        )
-        drug_interactions: dict[str, list[dict]] = dict(zip(unique_names, results))
-    except biomcp_client.BioMCPUnavailableError:
+    unique_names = list(dict.fromkeys(drug_names))  # deduplicate, preserve order
+    results = await asyncio.gather(
+        *[biomcp_client.get_interactions(name) for name in unique_names],
+        return_exceptions=True,
+    )
+
+    # Handle per-drug failures gracefully
+    all_failed = True
+    drug_interactions: dict[str, list[dict]] = {}
+    for name, result in zip(unique_names, results):
+        if isinstance(result, Exception):
+            logger.warning("BioMCP failed for %s: %s", name, result)
+            drug_interactions[name] = []
+        else:
+            all_failed = False
+            drug_interactions[name] = result
+
+    if all_failed and len(unique_names) > 0:
         logger.error("BioMCP unavailable — cannot check interactions")
         return {
             "interactions": [],
@@ -40,10 +51,10 @@ async def check(drug_names: list[str]) -> dict:
             "error": "Drug interaction data temporarily unavailable",
         }
 
-    # Check all pairs
+    # Check all pairs (use deduplicated list to avoid self-pairs)
     interactions = []
-    for i, drug_a in enumerate(drug_names):
-        for drug_b in drug_names[i + 1:]:
+    for i, drug_a in enumerate(unique_names):
+        for drug_b in unique_names[i + 1:]:
             result = await _find_interaction(drug_a, drug_b, drug_interactions)
             if result:
                 logger.info(

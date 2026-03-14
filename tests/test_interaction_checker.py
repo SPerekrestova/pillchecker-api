@@ -80,3 +80,29 @@ class TestInteractionChecker:
         result = await interaction_checker.check(["Ibuprofen", "warfarin"])
         assert result["safe"] is False
         assert len(result["interactions"]) == 1
+
+    async def test_partial_biomcp_failure_still_checks_available_pairs(self, mock_biomcp, mock_severity):
+        """If one drug fails but others succeed, check the available pairs."""
+        mock_biomcp.get_interactions.side_effect = [
+            BioMCPUnavailableError("timeout"),  # ibuprofen fails
+            [{"drug": "Aspirin", "description": "bleeding"}],  # warfarin succeeds
+            [{"drug": "Warfarin", "description": "bleeding"}],  # aspirin succeeds
+        ]
+        result = await interaction_checker.check(["ibuprofen", "warfarin", "aspirin"])
+        assert result["safe"] is False
+        assert result["error"] is None
+        # warfarin-aspirin pair should still be found
+        assert len(result["interactions"]) >= 1
+        pairs = [(i["drug_a"], i["drug_b"]) for i in result["interactions"]]
+        assert ("warfarin", "aspirin") in pairs
+
+    async def test_duplicate_drug_names_no_self_interaction(self, mock_biomcp):
+        """Duplicate drug names must not produce self-interaction pairs."""
+        mock_biomcp.get_interactions.side_effect = [
+            [{"drug": "Ibuprofen", "description": "bleeding"}],  # ibuprofen lists itself
+            [{"drug": "Warfarin", "description": "bleeding"}],
+        ]
+        result = await interaction_checker.check(["ibuprofen", "ibuprofen", "warfarin"])
+        # Should check only one pair: ibuprofen-warfarin (no self-pair)
+        for interaction in result["interactions"]:
+            assert interaction["drug_a"] != interaction["drug_b"]
