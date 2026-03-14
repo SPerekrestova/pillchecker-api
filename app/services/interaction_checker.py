@@ -53,7 +53,7 @@ async def check(drug_names: list[str]) -> dict:
 
     # Check all pairs (use deduplicated list to avoid self-pairs)
     for name, ints in drug_interactions.items():
-        logger.info(
+        logger.warning(
             "Interaction list for %s (%d entries): %s",
             name, len(ints), [e.get("drug", "?") for e in ints],
         )

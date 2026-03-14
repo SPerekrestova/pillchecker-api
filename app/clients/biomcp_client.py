@@ -147,7 +147,7 @@ async def get_interactions(drug_name: str) -> list[dict]:
             data = json.loads(content_block.text)
             interactions = data.get("interactions", [])
             drug_names_in_list = [e.get("drug", "?") for e in interactions[:20]]
-            logger.info(
+            logger.warning(
                 "BioMCP returned %d interactions for %s: %s",
                 len(interactions), drug_name, drug_names_in_list,
             )
