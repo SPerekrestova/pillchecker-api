@@ -90,7 +90,7 @@ def _match_in_list(target: str, interactions: list[dict]) -> dict | None:
 async def _format(drug_a: str, drug_b: str, match: dict) -> dict:
     """Format an interaction entry for the API response."""
     description = match.get("description", "")
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     severity = await loop.run_in_executor(None, severity_classifier.classify, description)
     return {
         "drug_a": drug_a,
