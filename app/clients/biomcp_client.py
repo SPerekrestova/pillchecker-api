@@ -130,7 +130,7 @@ async def get_interactions(drug_name: str) -> list[dict]:
     try:
         result = await _session.call_tool(
             _tool_name,
-            {"command": f"--json get drug {shlex.quote(drug_name)} interactions"},
+            {"command": f"get drug {shlex.quote(drug_name)} interactions --json"},
         )
     except Exception as exc:
         raise BioMCPUnavailableError(f"BioMCP call failed: {exc}") from exc

@@ -42,7 +42,7 @@ class TestGetInteractions:
         result = await biomcp_client.get_interactions("ibuprofen")
         mock_session.call_tool.assert_called_once_with(
             "biomcp",
-            {"command": "--json get drug ibuprofen interactions"},
+            {"command": "get drug ibuprofen interactions --json"},
         )
         assert result == [{"drug": "Aspirin", "description": "May increase bleeding risk."}]
 
@@ -109,7 +109,7 @@ class TestGetInteractions:
         await biomcp_client.get_interactions("Co-Amoxiclav 500mg")
         mock_session.call_tool.assert_called_once_with(
             "biomcp",
-            {"command": "--json get drug 'Co-Amoxiclav 500mg' interactions"},
+            {"command": "get drug 'Co-Amoxiclav 500mg' interactions --json"},
         )
 
 
