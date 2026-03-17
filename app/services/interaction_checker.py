@@ -1,9 +1,9 @@
-"""Interaction checker — looks up drug pairs via BioMCP."""
+"""Interaction checker — looks up drug pairs via DrugBank MCP server."""
 
 import asyncio
 import logging
 
-from app.clients import biomcp_client
+from app.clients import drugbank_client
 from app.nlp import severity_classifier
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ async def check(drug_names: list[str]) -> dict:
       - safe: bool | None (None if data source unavailable)
       - error: str | None
 
-    Note: Per-drug BioMCP errors (malformed response, drug not found) return []
+    Note: Per-drug DrugBank errors (malformed response, drug not found) return []
     silently, so safe=True means "no interactions detected" not "guaranteed safe".
     """
     if len(drug_names) < 2:
@@ -28,7 +28,7 @@ async def check(drug_names: list[str]) -> dict:
     # Fetch interaction lists for each drug (cached per drug)
     unique_names = list(dict.fromkeys(drug_names))  # deduplicate, preserve order
     results = await asyncio.gather(
-        *[biomcp_client.get_interactions(name) for name in unique_names],
+        *[drugbank_client.get_interactions(name) for name in unique_names],
         return_exceptions=True,
     )
 
@@ -37,14 +37,14 @@ async def check(drug_names: list[str]) -> dict:
     drug_interactions: dict[str, list[dict]] = {}
     for name, result in zip(unique_names, results):
         if isinstance(result, Exception):
-            logger.warning("BioMCP failed for %s: %s", name, result)
+            logger.warning("DrugBank failed for %s: %s", name, result)
             drug_interactions[name] = []
         else:
             all_failed = False
             drug_interactions[name] = result
 
     if all_failed and len(unique_names) > 0:
-        logger.error("BioMCP unavailable — cannot check interactions")
+        logger.error("DrugBank unavailable — cannot check interactions")
         return {
             "interactions": [],
             "safe": None,
