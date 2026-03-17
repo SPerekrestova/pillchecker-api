@@ -9,24 +9,6 @@ services:
       - HF_HOME=/app/models
       - HF_TOKEN=${HF_TOKEN:-}
       - API_KEY=${API_KEY}
-      - BIOMCP_URL=http://biomcp:8080/mcp
-    depends_on:
-      biomcp:
-        condition: service_healthy
-    restart: unless-stopped
-
-  biomcp:
-    build:
-      context: .
-      dockerfile: Dockerfile.biomcp
-    expose:
-      - "8080"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     restart: unless-stopped
 
   nginx:
