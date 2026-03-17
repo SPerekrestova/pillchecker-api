@@ -70,7 +70,7 @@ echo ""
 echo "=== GET /health/data ==="
 DATA_HEALTH=$(curl -sf "$BASE_URL/health/data")
 assert_eq "status" "$(echo "$DATA_HEALTH" | jq -r '.status')" "ready"
-assert_eq "biomcp" "$(echo "$DATA_HEALTH" | jq -r '.biomcp')" "connected"
+assert_eq "drugbank" "$(echo "$DATA_HEALTH" | jq -r '.drugbank')" "connected"
 
 # --- Test 2: POST /analyze ---
 

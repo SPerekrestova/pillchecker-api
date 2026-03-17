@@ -42,28 +42,28 @@ jobs:
 
       - name: Build and tag Docker images
         run: |
-          docker compose build api biomcp
+          docker compose build api
           docker tag pillchecker-api-api pillchecker-api:ci
 
-      - name: Start API and BioMCP
+      - name: Start API
         run: >
           docker compose
           -f docker-compose.yml
           -f docker-compose.ci.yml
-          up -d api biomcp
+          up -d api
 
       - name: Wait for API startup
         run: |
           for i in {1..30}; do
-            if curl -s http://localhost:8000/health/data | grep -q '"biomcp":"connected"'; then
-              echo "API and BioMCP ready!"
+            if curl -s http://localhost:8000/health/data | grep -q '"drugbank":"connected"'; then
+              echo "API ready!"
               exit 0
             fi
-            echo "Waiting for API and BioMCP... ($i/30)"
+            echo "Waiting for API... ($i/30)"
             sleep 5
           done
-          echo "Timeout waiting for API/BioMCP"
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api biomcp
+          echo "Timeout waiting for API"
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api
           exit 1
 
       - name: Run smoke tests
@@ -71,7 +71,7 @@ jobs:
 
       - name: Dump logs on failure
         if: failure()
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api biomcp
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api
 
       - name: Stop containers
         if: always()
