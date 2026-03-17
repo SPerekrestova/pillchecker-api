@@ -212,6 +212,7 @@ class TestConnect:
             await drugbank_client.connect()
 
         assert drugbank_client._session is mock_session
+        mock_session.initialize.assert_called_once()
         mock_session.list_tools.assert_called_once()
 
     async def test_connect_degrades_gracefully_on_failure(self):
