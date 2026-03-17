@@ -10,17 +10,17 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def mock_biomcp():
-    """Mock biomcp_client in every module that imports it."""
+def mock_drugbank():
+    """Mock drugbank_client in every module that imports it."""
     mock = MagicMock()
     mock.get_interactions = AsyncMock()
     mock.health_check = AsyncMock(return_value=True)
     mock.connect = AsyncMock()
     mock.close = AsyncMock()
     mock.BioMCPUnavailableError = Exception
-    with patch("app.services.interaction_checker.biomcp_client", mock), \
-         patch("app.api.health.biomcp_client", mock), \
-         patch("app.main.biomcp_client", mock):
+    with patch("app.services.interaction_checker.drugbank_client", mock), \
+         patch("app.api.health.drugbank_client", mock), \
+         patch("app.main.drugbank_client", mock):
         yield mock
 
 
@@ -37,14 +37,14 @@ def mock_severity():
 
 
 @pytest.fixture
-def client(mock_biomcp, mock_severity):
+def client(mock_drugbank, mock_severity):
     from app.main import app
     return TestClient(app)
 
 
 class TestInteractionsEndpoint:
-    def test_known_interaction(self, client, mock_biomcp):
-        mock_biomcp.get_interactions.side_effect = [
+    def test_known_interaction(self, client, mock_drugbank):
+        mock_drugbank.get_interactions.side_effect = [
             [{"drug": "Warfarin", "description": "Increases bleeding risk."}],
             [{"drug": "Ibuprofen", "description": "Increases bleeding risk."}],
         ]
@@ -55,8 +55,8 @@ class TestInteractionsEndpoint:
         assert len(data["interactions"]) >= 1
         assert data["interactions"][0]["severity"] in ["major", "moderate"]
 
-    def test_no_interaction(self, client, mock_biomcp):
-        mock_biomcp.get_interactions.side_effect = [
+    def test_no_interaction(self, client, mock_drugbank):
+        mock_drugbank.get_interactions.side_effect = [
             [], [],
         ]
         resp = client.post("/interactions", json={"drugs": ["ibuprofen", "amoxicillin"]})
@@ -64,8 +64,8 @@ class TestInteractionsEndpoint:
         data = resp.json()
         assert data["safe"] is True
 
-    def test_three_drugs(self, client, mock_biomcp):
-        mock_biomcp.get_interactions.side_effect = [
+    def test_three_drugs(self, client, mock_drugbank):
+        mock_drugbank.get_interactions.side_effect = [
             [{"drug": "Warfarin", "description": "x"}, {"drug": "Aspirin", "description": "x"}],
             [{"drug": "Ibuprofen", "description": "x"}, {"drug": "Aspirin", "description": "x"}],
             [{"drug": "Ibuprofen", "description": "x"}, {"drug": "Warfarin", "description": "x"}],
@@ -92,18 +92,18 @@ class TestHealthEndpoint:
         assert data["status"] == "ok"
         assert data["version"] == "0.1.0"
 
-    def test_data_health_connected(self, client, mock_biomcp):
-        mock_biomcp.health_check.return_value = True
+    def test_data_health_connected(self, client, mock_drugbank):
+        mock_drugbank.health_check.return_value = True
         resp = client.get("/health/data")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ready"
-        assert data["biomcp"] == "connected"
+        assert data["drugbank"] == "connected"
 
-    def test_data_health_degraded(self, client, mock_biomcp):
-        mock_biomcp.health_check.return_value = False
+    def test_data_health_degraded(self, client, mock_drugbank):
+        mock_drugbank.health_check.return_value = False
         resp = client.get("/health/data")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "degraded"
-        assert data["biomcp"] == "unreachable"
+        assert data["drugbank"] == "unreachable"
