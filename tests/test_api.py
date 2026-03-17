@@ -17,7 +17,7 @@ def mock_drugbank():
     mock.health_check = AsyncMock(return_value=True)
     mock.connect = AsyncMock()
     mock.close = AsyncMock()
-    mock.BioMCPUnavailableError = Exception
+    mock.DrugBankUnavailableError = Exception
     with patch("app.services.interaction_checker.drugbank_client", mock), \
          patch("app.api.health.drugbank_client", mock), \
          patch("app.main.drugbank_client", mock):
