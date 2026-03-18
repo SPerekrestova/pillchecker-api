@@ -67,9 +67,7 @@ echo ""
 echo "=== GET /health/data ==="
 DATA_HEALTH=$(curl -sf "$BASE_URL/health/data")
 assert_eq "status" "$(echo "$DATA_HEALTH" | jq -r '.status')" "ready"
-RECORD_COUNT=$(echo "$DATA_HEALTH" | jq -r '.record_count')
-if [ "$RECORD_COUNT" -gt 0 ]; then pass "record_count > 0 ($RECORD_COUNT)"
-else fail "record_count is 0"; fi
+assert_eq "biomcp" "$(echo "$DATA_HEALTH" | jq -r '.biomcp')" "connected"
 
 # ============================================
 # 2. POST /analyze — contract validation
