@@ -12,23 +12,28 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY app/ app/
 RUN uv sync --frozen --no-dev
 
+# --- Node.js build stage ---
+FROM node:20-bookworm AS node-builder
+
+WORKDIR /app/drugbank-mcp-server
+
+COPY drugbank-mcp-server/package.json drugbank-mcp-server/package-lock.json ./
+RUN npm ci
+
+COPY drugbank-mcp-server/scripts/ scripts/
+COPY drugbank-mcp-server/src/ src/
+RUN npm run download:db && npm run build:code
+
 # --- Runtime stage ---
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install Node.js and build tools for drugbank-mcp-server
-# (python3 already present in base image; build-essential needed for better-sqlite3 native addon)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nodejs npm build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Copy Node.js binary (needed at runtime to run the MCP server)
+COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node
 
-# Install and build drugbank-mcp-server
-COPY drugbank-mcp-server/package.json drugbank-mcp-server/package-lock.json /app/drugbank-mcp-server/
-RUN cd /app/drugbank-mcp-server && npm ci
-COPY drugbank-mcp-server/scripts/ /app/drugbank-mcp-server/scripts/
-COPY drugbank-mcp-server/src/ /app/drugbank-mcp-server/src/
-RUN cd /app/drugbank-mcp-server && npm run download:db && npm run build:code
+# Copy built drugbank-mcp-server (includes node_modules with native addons, DB, and build/)
+COPY --from=node-builder /app/drugbank-mcp-server /app/drugbank-mcp-server
 
 COPY --from=builder /app/.venv /app/.venv
 

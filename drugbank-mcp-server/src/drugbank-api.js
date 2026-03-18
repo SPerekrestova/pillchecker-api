@@ -227,11 +227,11 @@ async function getDrugInteractions(params) {
     };
   }
 
-  const interactions = drug['drug-interactions']?.['drug-interaction'] || [];
+  const interactions = drug.drug_interactions || [];
   const interactionList = Array.isArray(interactions) ? interactions : [interactions];
 
   const results = interactionList.map(interaction => ({
-    drugbank_id: interaction['drugbank-id'] || null,
+    drugbank_id: interaction.drugbank_id || null,
     name: interaction.name || null,
     description: interaction.description || null
   }));

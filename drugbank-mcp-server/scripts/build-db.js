@@ -311,7 +311,7 @@ function extractExternalIdentifiers(drug) {
 function extractDrugInteractions(drug) {
   const interactions = drug['drug-interactions']?.['drug-interaction'] || [];
   const intArray = extractArray(interactions);
-  return intArray.slice(0, 100).map(int => ({
+  return intArray.map(int => ({
     drugbank_id: int['drugbank-id'] || null,
     name: int.name || null,
     description: int.description || null
