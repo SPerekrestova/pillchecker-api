@@ -22,6 +22,8 @@ RUN npm ci
 
 COPY drugbank-mcp-server/scripts/ scripts/
 COPY drugbank-mcp-server/src/ src/
+ARG DRUGBANK_DB_REPO
+ENV DRUGBANK_DB_REPO=${DRUGBANK_DB_REPO}
 RUN npm run download:db && npm run build:code
 
 # --- Runtime stage ---
