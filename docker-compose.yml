@@ -5,7 +5,6 @@ services:
       - "8000"
     volumes:
       - model-cache:/app/models
-      - ./data:/app/data
     environment:
       - HF_HOME=/app/models
       - HF_TOKEN=${HF_TOKEN:-}

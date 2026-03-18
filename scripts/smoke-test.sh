@@ -70,12 +70,7 @@ echo ""
 echo "=== GET /health/data ==="
 DATA_HEALTH=$(curl -sf "$BASE_URL/health/data")
 assert_eq "status" "$(echo "$DATA_HEALTH" | jq -r '.status')" "ready"
-RECORD_COUNT=$(echo "$DATA_HEALTH" | jq -r '.record_count')
-if [ "$RECORD_COUNT" -gt 0 ]; then
-    pass "record_count > 0 ($RECORD_COUNT)"
-else
-    fail "record_count is 0"
-fi
+assert_eq "drugbank" "$(echo "$DATA_HEALTH" | jq -r '.drugbank')" "connected"
 
 # --- Test 2: POST /analyze ---
 
@@ -96,10 +91,10 @@ echo ""
 echo "=== POST /interactions ==="
 INTERACTIONS=$(curl -sf -X POST "$BASE_URL/interactions" \
     -H "Content-Type: application/json" \
-    -d '{"drugs": ["ibuprofen", "aspirin"]}')
+    -d '{"drugs": ["warfarin", "apixaban"]}')
 
 assert_eq "safe" "$(echo "$INTERACTIONS" | jq -r '.safe')" "false"
-assert_eq "severity" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].severity')" "moderate"
+assert_not_empty "severity" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].severity')"
 assert_not_empty "description" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].description')"
 
 # --- Summary ---

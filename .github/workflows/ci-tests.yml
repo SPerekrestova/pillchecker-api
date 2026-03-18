@@ -40,7 +40,7 @@ jobs:
           sudo apt-get clean
           df -h /
 
-      - name: Build and tag Docker image
+      - name: Build and tag Docker images
         run: |
           docker compose build api
           docker tag pillchecker-api-api pillchecker-api:ci
@@ -52,18 +52,18 @@ jobs:
           -f docker-compose.ci.yml
           up -d api
 
-      - name: Wait for startup and hydration
+      - name: Wait for API startup
         run: |
-          # Wait for the entrypoint to finish syncing data
           for i in {1..30}; do
-            if curl -s http://localhost:8000/health/data | grep -q '"status":"ready"'; then
-              echo "API and Data ready!"
+            if curl -s http://localhost:8000/health/data | grep -q '"drugbank":"connected"'; then
+              echo "API ready!"
               exit 0
             fi
-            echo "Waiting for API/Data hydration..."
+            echo "Waiting for API... ($i/30)"
             sleep 5
           done
           echo "Timeout waiting for API"
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api
           exit 1
 
       - name: Run smoke tests
