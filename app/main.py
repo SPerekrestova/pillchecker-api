@@ -7,9 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.analyze import router as analyze_router
 from app.api.health import router as health_router
 from app.api.interactions import router as interactions_router
-from app.data import fda_store
+from app.clients import biomcp_client
 from app.middleware.api_key import APIKeyMiddleware
-from app.nlp import ner_model
+from app.nlp import ner_model, severity_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +19,14 @@ async def lifespan(app: FastAPI):
     logger.info("Loading NER model...")
     ner_model.load_model()
     logger.info("NER model loaded.")
-    logger.info("Loading interaction data...")
-    fda_store.load()
-    logger.info("Loaded %d drug labels.", fda_store.interaction_count())
+    logger.info("Loading severity classifier...")
+    severity_classifier.load_model()
+    logger.info("Severity classifier loaded: %s", severity_classifier.is_loaded())
+    logger.info("Connecting to BioMCP...")
+    await biomcp_client.connect()
+    logger.info("BioMCP connected: %s", await biomcp_client.health_check())
     yield
+    await biomcp_client.close()
 
 
 app = FastAPI(

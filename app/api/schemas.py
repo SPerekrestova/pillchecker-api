@@ -43,4 +43,5 @@ class InteractionResult(BaseModel):
 
 class InteractionsResponse(BaseModel):
     interactions: list[InteractionResult]
-    safe: bool
+    safe: bool | None
+    error: str | None = None
