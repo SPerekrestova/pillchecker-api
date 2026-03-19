@@ -106,3 +106,79 @@ class TestInteractionChecker:
         # Should check only one pair: ibuprofen-warfarin (no self-pair)
         for interaction in result["interactions"]:
             assert interaction["drug_a"] != interaction["drug_b"]
+
+
+@pytest.fixture
+def mock_openfda(mock_drugbank):
+    """Mock openfda_client for interaction checker tests."""
+    with patch("app.services.interaction_checker.openfda_client") as mock:
+        mock.check_pair = AsyncMock(return_value=None)
+        yield mock
+
+
+class TestOpenFDAFallback:
+    async def test_openfda_called_when_both_drugbank_lists_empty(self, mock_drugbank, mock_openfda, mock_severity):
+        """Both drugs return [] from DrugBank → OpenFDA is tried."""
+        mock_drugbank.get_interactions.return_value = []
+        mock_openfda.check_pair.return_value = {
+            "drug": "ibuprofen",
+            "description": "Ibuprofen increases bleeding risk with warfarin.",
+        }
+        result = await interaction_checker.check(["warfarin", "ibuprofen"])
+        assert result["safe"] is False
+        assert len(result["interactions"]) == 1
+        assert result["interactions"][0]["drug_a"] == "warfarin"
+        assert result["interactions"][0]["drug_b"] == "ibuprofen"
+        mock_openfda.check_pair.assert_called()
+
+    async def test_openfda_called_when_one_drugbank_list_empty(self, mock_drugbank, mock_openfda, mock_severity):
+        """Asymmetric case: drug_a empty, drug_b non-empty but no match → OpenFDA fires."""
+        mock_drugbank.get_interactions.side_effect = [
+            [],  # warfarin → empty (cap hit)
+            [{"drug": "aspirin", "description": "bleeding"}],  # ibuprofen → non-empty, no warfarin
+        ]
+        mock_openfda.check_pair.return_value = {
+            "drug": "ibuprofen",
+            "description": "Ibuprofen increases anticoagulant effect.",
+        }
+        result = await interaction_checker.check(["warfarin", "ibuprofen"])
+        assert result["safe"] is False
+        mock_openfda.check_pair.assert_called()
+
+    async def test_openfda_not_called_when_both_drugbank_lists_nonempty(self, mock_drugbank, mock_openfda):
+        """Both drugs have non-empty DrugBank lists → OpenFDA is never called."""
+        mock_drugbank.get_interactions.side_effect = [
+            [{"drug": "metformin", "description": "some"}],
+            [{"drug": "lisinopril", "description": "some"}],
+        ]
+        result = await interaction_checker.check(["warfarin", "ibuprofen"])
+        assert result["safe"] is True
+        mock_openfda.check_pair.assert_not_called()
+
+    async def test_openfda_bidirectional_retry(self, mock_drugbank, mock_openfda, mock_severity):
+        """check_pair(a, b) returns None → check_pair(b, a) is tried."""
+        mock_drugbank.get_interactions.return_value = []
+        # First call (warfarin→ibuprofen) returns None, second (ibuprofen→warfarin) finds match
+        mock_openfda.check_pair.side_effect = [
+            None,
+            {"drug": "warfarin", "description": "Warfarin increases bleeding risk."},
+        ]
+        result = await interaction_checker.check(["warfarin", "ibuprofen"])
+        assert result["safe"] is False
+        assert mock_openfda.check_pair.call_count == 2
+
+    async def test_openfda_finds_nothing_returns_safe(self, mock_drugbank, mock_openfda):
+        """Both DrugBank and OpenFDA miss → safe: true."""
+        mock_drugbank.get_interactions.return_value = []
+        mock_openfda.check_pair.return_value = None
+        result = await interaction_checker.check(["warfarin", "ibuprofen"])
+        assert result["safe"] is True
+        assert result["interactions"] == []
+
+    async def test_openfda_exception_does_not_propagate(self, mock_drugbank, mock_openfda):
+        """OpenFDA raising an exception must not crash the checker."""
+        mock_drugbank.get_interactions.return_value = []
+        mock_openfda.check_pair.side_effect = Exception("OpenFDA down")
+        result = await interaction_checker.check(["warfarin", "ibuprofen"])
+        assert result["safe"] is True
+        assert result["error"] is None

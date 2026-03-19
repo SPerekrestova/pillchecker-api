@@ -3,7 +3,7 @@
 import asyncio
 import logging
 
-from app.clients import drugbank_client
+from app.clients import drugbank_client, openfda_client
 from app.nlp import severity_classifier
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,10 @@ async def _find_interaction(
     drug_b: str,
     drug_interactions: dict[str, list[dict]],
 ) -> dict | None:
-    """Check if drug_b appears in drug_a's interaction list, or vice versa."""
+    """Check if drug_b appears in drug_a's interaction list, or vice versa.
+
+    Falls back to OpenFDA if at least one drug has an empty DrugBank list.
+    """
     # Check A's list for B
     match = _match_in_list(drug_b, drug_interactions.get(drug_a, []))
     if match:
@@ -85,6 +88,17 @@ async def _find_interaction(
     match = _match_in_list(drug_a, drug_interactions.get(drug_b, []))
     if match:
         return await _format(drug_a, drug_b, match)
+
+    # At least one empty DrugBank list → cap-hit or error; try OpenFDA
+    if not drug_interactions.get(drug_a) or not drug_interactions.get(drug_b):
+        try:
+            fda_match = await openfda_client.check_pair(drug_a, drug_b)
+            if fda_match is None:
+                fda_match = await openfda_client.check_pair(drug_b, drug_a)
+            if fda_match:
+                return await _format(drug_a, drug_b, fda_match)
+        except Exception:
+            logger.warning("OpenFDA fallback failed for %s + %s", drug_a, drug_b, exc_info=True)
 
     return None
 
@@ -107,6 +121,6 @@ async def _format(drug_a: str, drug_b: str, match: dict) -> dict:
         "drug_a": drug_a,
         "drug_b": drug_b,
         "severity": severity,
-        "description": description or "Interaction reported in DrugBank.",
+        "description": description or "Interaction reported in drug database.",
         "management": _MANAGEMENT,
     }
