@@ -47,7 +47,7 @@ ENV TRANSFORMERS_CACHE=/app/models
 # Layer is cached until venv or model ID changes.
 # In local dev, docker-compose mounts a volume over /app/models.
 RUN python -c "from transformers import pipeline; \
-    pipeline('ner', model='OpenMed/OpenMed-NER-PharmaDetect-ModernClinical-149M', aggregation_strategy='none'); \
+    pipeline('ner', model='OpenMed/OpenMed-NER-BioPatient-108M', aggregation_strategy='none'); \
     pipeline('zero-shot-classification', model='MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli')"
 
 # App code comes last — most frequently changing layer
