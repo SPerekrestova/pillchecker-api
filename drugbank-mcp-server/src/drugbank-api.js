@@ -233,7 +233,8 @@ async function getDrugInteractions(params) {
   const results = interactionList.map(interaction => ({
     drugbank_id: interaction.drugbank_id || null,
     name: interaction.name || null,
-    description: interaction.description || null
+    description: interaction.description || null,
+    severity: interaction.severity || null
   }));
 
   return {
