@@ -10,8 +10,10 @@ Both passes enrich results with dosage regex and RxNorm normalization.
 import logging
 
 from app.clients import rxnorm_client
+from app.middleware.audit_log import get_audit_context
 from app.nlp import ner_model
 from app.nlp.dosage_parser import extract_dosages
+from app.nlp.ocr_cleaner import clean as ocr_clean
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +33,19 @@ async def analyze(text: str) -> list[dict]:
     dosages = extract_dosages(text)
     dosage_str = dosages[0].raw if dosages else None
 
-    # Pass 1: NER
-    entities = ner_model.predict(text)
+    # Clean OCR artifacts before NER
+    cleaned_text = ocr_clean(text)
+
+    # Pass 1: NER (on cleaned text)
+    entities = ner_model.predict(cleaned_text)
+
+    ctx = get_audit_context()
+    if ctx:
+        ctx.add("ner", {
+            "entities": [{"text": e.text, "label": e.label, "score": round(e.score, 4)} for e in entities],
+            "model": ner_model.MODEL_ID,
+        })
+
     drug_entities = [
         e for e in entities
         if e.label in ("CHEM", "Chemical", "CHEMICAL") and not e.text.isdigit()
@@ -77,6 +90,7 @@ async def _enrich_ner_results(
             "form": None,
             "source": "ner",
             "confidence": entity.score,
+            "needs_confirmation": entity.score < 0.85,
         })
 
     results.sort(key=lambda r: r["confidence"], reverse=True)
@@ -128,7 +142,8 @@ async def _rxnorm_fallback(text: str, dosage_str: str | None) -> list[dict]:
             "dosage": dosage_str,
             "form": None,
             "source": "rxnorm_fallback",
-            "confidence": 0.5,  # Lower confidence for fallback
+            "confidence": best.score / 20.0,  # normalize approx score to 0-1 range
+            "needs_confirmation": True,
         })
         # Only return the first match in fallback mode
         break

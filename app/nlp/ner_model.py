@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from transformers import pipeline
 
-MODEL_ID = "OpenMed/OpenMed-NER-PharmaDetect-ModernClinical-149M"
+MODEL_ID = "OpenMed/OpenMed-NER-PharmaDetect-BioPatient-108M"
 
 _ner_pipeline = None
 

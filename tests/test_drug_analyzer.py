@@ -222,6 +222,53 @@ async def test_all_ner_filtered_falls_through_to_fallback():
 
 
 @pytest.mark.asyncio
+async def test_rxnorm_fallback_sets_needs_confirmation():
+    """RxNorm fallback results should have needs_confirmation=True."""
+    candidate = DrugInfo(rxcui="5640", name="Ibuprofen", score=10.55)
+
+    with (
+        patch("app.services.drug_analyzer.rxnorm_client.approximate_term",
+              new=AsyncMock(return_value=[candidate])),
+        patch("app.services.drug_analyzer.rxnorm_client.get_drug_details",
+              new=AsyncMock(return_value={"name": "ibuprofen"})),
+    ):
+        results = await drug_analyzer.analyze("ibuprofen")
+
+    assert results[0]["needs_confirmation"] is True
+    assert results[0]["source"] == "rxnorm_fallback"
+
+
+@pytest.mark.asyncio
+async def test_high_confidence_ner_no_confirmation():
+    """High-confidence NER results should not need confirmation."""
+    entity = ner_model.Entity(text="Ibuprofen", label="CHEM", score=0.95, start=0, end=9)
+
+    with (
+        patch("app.services.drug_analyzer.ner_model.predict", return_value=[entity]),
+        patch("app.services.drug_analyzer.rxnorm_client.get_rxcui",
+              new=AsyncMock(return_value="5640")),
+    ):
+        results = await drug_analyzer.analyze("Ibuprofen 400mg")
+
+    assert results[0]["needs_confirmation"] is False
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_ner_needs_confirmation():
+    """NER results with confidence < 0.85 should need confirmation."""
+    entity = ner_model.Entity(text="Paracetamol", label="CHEM", score=0.72, start=0, end=11)
+
+    with (
+        patch("app.services.drug_analyzer.ner_model.predict", return_value=[entity]),
+        patch("app.services.drug_analyzer.rxnorm_client.get_rxcui",
+              new=AsyncMock(return_value="161")),
+    ):
+        results = await drug_analyzer.analyze("Paracetamol 500mg")
+
+    assert results[0]["needs_confirmation"] is True
+
+
+@pytest.mark.asyncio
 async def test_ner_results_sorted_by_confidence_descending():
     """Results must be sorted by confidence, highest first."""
     entities = [

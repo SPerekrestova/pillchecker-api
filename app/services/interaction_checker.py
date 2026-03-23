@@ -4,7 +4,8 @@ import asyncio
 import logging
 
 from app.clients import drugbank_client, openfda_client
-from app.nlp import severity_classifier
+from app.middleware.audit_log import get_audit_context
+from app.nlp import severity_classifier, severity_parser
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +83,12 @@ async def _find_interaction(
     # Check A's list for B
     match = _match_in_list(drug_b, drug_interactions.get(drug_a, []))
     if match:
-        return await _format(drug_a, drug_b, match)
+        return await _format(drug_a, drug_b, match, source="drugbank")
 
     # Check B's list for A
     match = _match_in_list(drug_a, drug_interactions.get(drug_b, []))
     if match:
-        return await _format(drug_a, drug_b, match)
+        return await _format(drug_a, drug_b, match, source="drugbank")
 
     # At least one empty DrugBank list → cap-hit or error; try OpenFDA
     if not drug_interactions.get(drug_a) or not drug_interactions.get(drug_b):
@@ -96,7 +97,7 @@ async def _find_interaction(
             if fda_match is None:
                 fda_match = await openfda_client.check_pair(drug_b, drug_a)
             if fda_match:
-                return await _format(drug_a, drug_b, fda_match)
+                return await _format(drug_a, drug_b, fda_match, source="openfda")
         except Exception:
             logger.warning("OpenFDA fallback failed for %s + %s", drug_a, drug_b, exc_info=True)
 
@@ -112,15 +113,53 @@ def _match_in_list(target: str, interactions: list[dict]) -> dict | None:
     return None
 
 
-async def _format(drug_a: str, drug_b: str, match: dict) -> dict:
-    """Format an interaction entry for the API response."""
+async def _format(drug_a: str, drug_b: str, match: dict, source: str) -> dict:
+    """Format an interaction entry for the API response.
+
+    Routes severity classification based on source:
+    - drugbank: template parser first, classifier fallback
+    - openfda: zero-shot classifier
+    """
     description = match.get("description", "")
-    loop = asyncio.get_running_loop()
-    severity = await loop.run_in_executor(None, severity_classifier.classify, description)
+
+    # Check for pre-computed severity from DrugBank build (Phase 3)
+    precomputed_severity = match.get("severity")
+    if precomputed_severity and precomputed_severity != "unknown":
+        severity = precomputed_severity
+        uncertain = False
+    elif source == "drugbank":
+        severity = severity_parser.parse_severity(description)
+        if severity == "unknown":
+            # Template didn't match — fall back to classifier
+            loop = asyncio.get_running_loop()
+            severity, uncertain = await loop.run_in_executor(
+                None, severity_classifier.classify, description
+            )
+        else:
+            uncertain = False
+    else:
+        # OpenFDA: use zero-shot classifier
+        loop = asyncio.get_running_loop()
+        severity, uncertain = await loop.run_in_executor(
+            None, severity_classifier.classify, description
+        )
+
+    ctx = get_audit_context()
+    if ctx:
+        ctx.add("severity_classification", {
+            "drug_a": drug_a,
+            "drug_b": drug_b,
+            "severity": severity,
+            "uncertain": uncertain,
+            "source": source,
+            "method": "template_parser" if source == "drugbank" else "zero_shot_classifier",
+        })
+
     return {
         "drug_a": drug_a,
         "drug_b": drug_b,
         "severity": severity,
         "description": description or "Interaction reported in drug database.",
         "management": _MANAGEMENT,
+        "uncertain": uncertain,
     }

@@ -308,13 +308,34 @@ function extractExternalIdentifiers(drug) {
   return result;
 }
 
+/**
+ * Parse severity from DrugBank interaction description template.
+ * Mirrors the Python severity_parser.py logic.
+ */
+function parseSeverity(description) {
+  if (!description) return 'unknown';
+  const desc = description.toLowerCase();
+
+  if (/risk or severity of .+ can be (increased|decreased)/.test(desc)) return 'major';
+  if (/may increase the .+ activities/.test(desc)) return 'moderate';
+  if (/may decrease the .+ activities/.test(desc)) return 'minor';
+  if (/serum concentration .+ can be (increased|decreased)/.test(desc)) return 'moderate';
+  if (/metabolism .+ can be (increased|decreased)/.test(desc)) return 'moderate';
+  if (/therapeutic efficacy .+ can be (decreased|increased)/.test(desc)) return 'minor';
+  if (/excretion .+ can be (increased|decreased)/.test(desc)) return 'moderate';
+  if (/absorption .+ can be (increased|decreased)/.test(desc)) return 'moderate';
+
+  return 'unknown';
+}
+
 function extractDrugInteractions(drug) {
   const interactions = drug['drug-interactions']?.['drug-interaction'] || [];
   const intArray = extractArray(interactions);
   return intArray.map(int => ({
     drugbank_id: int['drugbank-id'] || null,
     name: int.name || null,
-    description: int.description || null
+    description: int.description || null,
+    severity: parseSeverity(int.description)
   }));
 }
 
@@ -605,6 +626,12 @@ xml.on('end', function() {
 
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
   const size = (fs.statSync(DB_FILE).size / (1024 * 1024)).toFixed(1);
+
+  // Write VERSION file
+  const versionDate = new Date().toISOString().slice(0, 10).replace(/-/g, '-');
+  const versionString = `db-${versionDate}`;
+  fs.writeFileSync(path.join(DATA_DIR, 'VERSION'), versionString);
+  console.log(`[DB Builder] Version: ${versionString}`);
 
   console.log(`[DB Builder] ✓ Database built successfully!`);
   console.log(`[DB Builder] Time: ${duration}s`);

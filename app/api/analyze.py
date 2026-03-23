@@ -2,7 +2,8 @@
 
 from fastapi import APIRouter
 
-from app.api.schemas import AnalyzeRequest, AnalyzeResponse, DrugResult
+from app.api.schemas import AnalyzeDataSources, AnalyzeRequest, AnalyzeResponse, DrugResult
+from app.nlp import ner_model
 from app.services import drug_analyzer
 
 router = APIRouter()
@@ -14,4 +15,5 @@ async def analyze(request: AnalyzeRequest):
     return AnalyzeResponse(
         drugs=[DrugResult(**d) for d in drugs],
         raw_text=request.text,
+        data_sources=AnalyzeDataSources(ner_model=ner_model.MODEL_ID),
     )

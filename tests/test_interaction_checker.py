@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 from app.clients.drugbank_client import DrugBankUnavailableError
+from app.nlp import severity_parser
 from app.services import interaction_checker
 
 
@@ -19,7 +20,15 @@ def mock_drugbank():
 def mock_severity():
     """Mock severity_classifier.classify for all tests."""
     with patch("app.services.interaction_checker.severity_classifier") as mock:
-        mock.classify.return_value = "moderate"
+        mock.classify.return_value = ("moderate", False)
+        yield mock
+
+
+@pytest.fixture(autouse=True)
+def mock_severity_parser():
+    """Mock severity_parser.parse_severity for all tests."""
+    with patch("app.services.interaction_checker.severity_parser") as mock:
+        mock.parse_severity.return_value = "moderate"
         yield mock
 
 
@@ -182,3 +191,48 @@ class TestOpenFDAFallback:
         result = await interaction_checker.check(["warfarin", "ibuprofen"])
         assert result["safe"] is True
         assert result["error"] is None
+
+
+class TestSourceRouting:
+    async def test_drugbank_interaction_uses_template_parser(
+        self, mock_drugbank, mock_severity_parser, mock_severity
+    ):
+        """DrugBank interactions should use severity_parser, not classifier."""
+        mock_drugbank.get_interactions.side_effect = [
+            [{"drug": "Warfarin", "description": "The risk or severity of bleeding can be increased."}],
+            [],
+        ]
+        mock_severity_parser.parse_severity.return_value = "major"
+        result = await interaction_checker.check(["ibuprofen", "warfarin"])
+        mock_severity_parser.parse_severity.assert_called_once()
+        mock_severity.classify.assert_not_called()
+        assert result["interactions"][0]["severity"] == "major"
+        assert result["interactions"][0]["uncertain"] is False
+
+    async def test_openfda_interaction_uses_classifier(
+        self, mock_drugbank, mock_openfda, mock_severity_parser, mock_severity
+    ):
+        """OpenFDA fallback interactions should use zero-shot classifier."""
+        mock_drugbank.get_interactions.return_value = []
+        mock_openfda.check_pair.return_value = {
+            "drug": "ibuprofen",
+            "description": "Ibuprofen increases bleeding risk with warfarin.",
+        }
+        mock_severity.classify.return_value = ("major", False)
+        result = await interaction_checker.check(["warfarin", "ibuprofen"])
+        mock_severity.classify.assert_called_once()
+        mock_severity_parser.parse_severity.assert_not_called()
+
+    async def test_drugbank_unknown_template_falls_back_to_classifier(
+        self, mock_drugbank, mock_severity_parser, mock_severity
+    ):
+        """When template parser returns 'unknown', fall back to classifier."""
+        mock_drugbank.get_interactions.side_effect = [
+            [{"drug": "Warfarin", "description": "Novel interaction format."}],
+            [],
+        ]
+        mock_severity_parser.parse_severity.return_value = "unknown"
+        mock_severity.classify.return_value = ("moderate", True)
+        result = await interaction_checker.check(["ibuprofen", "warfarin"])
+        mock_severity.classify.assert_called_once()
+        assert result["interactions"][0]["uncertain"] is True

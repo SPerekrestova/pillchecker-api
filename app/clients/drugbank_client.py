@@ -26,7 +26,7 @@ _streams: AbstractAsyncContextManager | None = None
 
 # Simple TTL cache: {key: (value, expiry_timestamp)}
 _cache: dict[str, tuple[object, float]] = {}
-_CACHE_TTL = 86400  # 24 hours
+_CACHE_TTL = 14400  # 4 hours
 _CACHE_MISS = object()  # sentinel to distinguish cache miss from cached None
 
 
@@ -184,7 +184,11 @@ async def get_interactions(drug_name: str) -> list[dict]:
         raw_interactions = data.get("interactions", [])
         # Map to same format as biomcp_client: {drug, description}
         interactions = [
-            {"drug": entry.get("name", ""), "description": entry.get("description")}
+            {
+                "drug": entry.get("name", ""),
+                "description": entry.get("description"),
+                "severity": entry.get("severity"),
+            }
             for entry in raw_interactions
         ]
     except (json.JSONDecodeError, IndexError):

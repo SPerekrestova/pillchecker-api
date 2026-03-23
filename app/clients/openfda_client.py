@@ -24,7 +24,7 @@ _CACHE_MISS = object()
 
 # Simple TTL cache: {key: (value, expiry_timestamp)}
 _cache: dict[str, tuple[object, float]] = {}
-_CACHE_TTL = 86400  # 24 hours
+_CACHE_TTL = 14400  # 4 hours
 
 
 def _cache_get(key: str) -> object:

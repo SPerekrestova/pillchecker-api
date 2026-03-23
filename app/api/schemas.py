@@ -16,11 +16,17 @@ class DrugResult(BaseModel):
     form: str | None
     source: str  # "ner" or "rxnorm_fallback"
     confidence: float
+    needs_confirmation: bool = False
+
+
+class AnalyzeDataSources(BaseModel):
+    ner_model: str
 
 
 class AnalyzeResponse(BaseModel):
     drugs: list[DrugResult]
     raw_text: str
+    data_sources: AnalyzeDataSources | None = None
 
 
 # --- POST /interactions ---
@@ -39,9 +45,25 @@ class InteractionResult(BaseModel):
     severity: str
     description: str
     management: str
+    uncertain: bool = False
+
+
+class InteractionsDataSources(BaseModel):
+    drugbank_version: str | None = None
+    severity_classifier: str
+
+
+_INTERACTION_LIMITATIONS = [
+    "Checks pairwise interactions only — multi-drug cascades are not detected",
+    "Does not account for patient-specific factors (age, weight, renal/hepatic function, genetics)",
+    "Coverage depends on DrugBank database scope (~19,800 drugs)",
+    "Not a substitute for professional medical advice",
+]
 
 
 class InteractionsResponse(BaseModel):
     interactions: list[InteractionResult]
     safe: bool | None
     error: str | None = None
+    data_sources: InteractionsDataSources | None = None
+    limitations: list[str] = _INTERACTION_LIMITATIONS
