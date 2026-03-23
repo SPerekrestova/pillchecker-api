@@ -63,6 +63,8 @@ class TestInteractionsEndpoint:
         assert data["safe"] is False
         assert len(data["interactions"]) >= 1
         assert data["interactions"][0]["severity"] in ["major", "moderate"]
+        assert "data_sources" in data
+        assert "severity_classifier" in data["data_sources"]
 
     def test_no_interaction(self, client, mock_drugbank):
         mock_drugbank.get_interactions.side_effect = [

@@ -19,9 +19,14 @@ class DrugResult(BaseModel):
     needs_confirmation: bool = False
 
 
+class AnalyzeDataSources(BaseModel):
+    ner_model: str
+
+
 class AnalyzeResponse(BaseModel):
     drugs: list[DrugResult]
     raw_text: str
+    data_sources: AnalyzeDataSources | None = None
 
 
 # --- POST /interactions ---
@@ -43,7 +48,13 @@ class InteractionResult(BaseModel):
     uncertain: bool = False
 
 
+class InteractionsDataSources(BaseModel):
+    drugbank_version: str | None = None
+    severity_classifier: str
+
+
 class InteractionsResponse(BaseModel):
     interactions: list[InteractionResult]
     safe: bool | None
     error: str | None = None
+    data_sources: InteractionsDataSources | None = None
