@@ -53,8 +53,17 @@ class InteractionsDataSources(BaseModel):
     severity_classifier: str
 
 
+_INTERACTION_LIMITATIONS = [
+    "Checks pairwise interactions only — multi-drug cascades are not detected",
+    "Does not account for patient-specific factors (age, weight, renal/hepatic function, genetics)",
+    "Coverage depends on DrugBank database scope (~19,800 drugs)",
+    "Not a substitute for professional medical advice",
+]
+
+
 class InteractionsResponse(BaseModel):
     interactions: list[InteractionResult]
     safe: bool | None
     error: str | None = None
     data_sources: InteractionsDataSources | None = None
+    limitations: list[str] = _INTERACTION_LIMITATIONS
