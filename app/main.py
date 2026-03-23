@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.admin import router as admin_router
 from app.api.analyze import router as analyze_router
 from app.api.health import router as health_router
 from app.api.interactions import router as interactions_router
@@ -54,3 +55,4 @@ app.add_middleware(APIKeyMiddleware)
 app.include_router(health_router)
 app.include_router(analyze_router)
 app.include_router(interactions_router)
+app.include_router(admin_router)
