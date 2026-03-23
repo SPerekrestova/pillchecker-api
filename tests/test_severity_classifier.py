@@ -25,7 +25,8 @@ class TestClassify:
             ],
             "scores": [0.85, 0.10, 0.05],
         }
-        assert severity_classifier.classify("contraindicated combination") == "major"
+        severity, uncertain = severity_classifier.classify("contraindicated combination")
+        assert severity == "major"
 
     def test_moderate_severity(self, mock_pipeline):
         mock_pipeline.return_value = {
@@ -36,7 +37,8 @@ class TestClassify:
             ],
             "scores": [0.70, 0.20, 0.10],
         }
-        assert severity_classifier.classify("monitor blood pressure") == "moderate"
+        severity, uncertain = severity_classifier.classify("monitor blood pressure")
+        assert severity == "moderate"
 
     def test_minor_severity(self, mock_pipeline):
         mock_pipeline.return_value = {
@@ -45,21 +47,55 @@ class TestClassify:
                 "moderate interaction requiring monitoring",
                 "critical dangerous interaction",
             ],
-            "scores": [0.60, 0.25, 0.15],
+            "scores": [0.75, 0.15, 0.10],
         }
-        assert severity_classifier.classify("minimal clinical significance") == "minor"
+        severity, uncertain = severity_classifier.classify("minimal clinical significance")
+        assert severity == "minor"
+
+    def test_returns_tuple_with_uncertain_flag(self, mock_pipeline):
+        mock_pipeline.return_value = {
+            "labels": [
+                "critical dangerous interaction",
+                "moderate interaction requiring monitoring",
+                "minor interaction with low risk",
+            ],
+            "scores": [0.85, 0.10, 0.05],
+        }
+        severity, uncertain = severity_classifier.classify("contraindicated combination")
+        assert severity == "major"
+        assert uncertain is False
+
+    def test_low_confidence_returns_major_uncertain(self, mock_pipeline):
+        """Below threshold (0.7), classifier should return major+uncertain."""
+        mock_pipeline.return_value = {
+            "labels": [
+                "minor interaction with low risk",
+                "moderate interaction requiring monitoring",
+                "critical dangerous interaction",
+            ],
+            "scores": [0.45, 0.35, 0.20],
+        }
+        severity, uncertain = severity_classifier.classify("some vague description")
+        assert severity == "major"
+        assert uncertain is True
 
     def test_empty_description(self, mock_pipeline):
-        assert severity_classifier.classify("") == "unknown"
+        severity, uncertain = severity_classifier.classify("")
+        assert severity == "unknown"
+        assert uncertain is True
         mock_pipeline.assert_not_called()
 
     def test_none_description(self, mock_pipeline):
-        assert severity_classifier.classify(None) == "unknown"
+        severity, uncertain = severity_classifier.classify(None)
+        assert severity == "unknown"
+        assert uncertain is True
         mock_pipeline.assert_not_called()
 
     def test_inference_failure_falls_back_to_regex(self, mock_pipeline):
         mock_pipeline.side_effect = RuntimeError("OOM")
-        assert severity_classifier.classify("contraindicated") == "major"
+        severity, uncertain = severity_classifier.classify("contraindicated")
+        assert severity == "major"
+        assert uncertain is True
 
 
 class TestRegexFallback:
@@ -80,11 +116,13 @@ class TestRegexFallback:
         assert result == "moderate"
 
     def test_fallback_unknown_for_neutral_text(self):
+        """Unrecognized text now defaults to 'major' for safety."""
         result = severity_classifier._regex_fallback("No significant interaction.")
-        assert result == "unknown"
+        assert result == "major"
 
     def test_classify_uses_fallback_when_unloaded(self):
-        assert severity_classifier.classify("contraindicated") == "major"
+        severity, uncertain = severity_classifier.classify("contraindicated")
+        assert severity == "major"
 
 
 class TestLoadModel:

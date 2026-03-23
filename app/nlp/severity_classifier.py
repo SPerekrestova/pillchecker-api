@@ -2,6 +2,9 @@
 
 Uses DeBERTa-v3-base-mnli for zero-shot classification.
 Falls back to regex if the model is not loaded.
+
+Returns (severity, uncertain) tuples. For safety, unclassifiable
+interactions default to "major" with uncertain=True.
 """
 
 import logging
@@ -14,6 +17,8 @@ logger = logging.getLogger(__name__)
 MODEL_ID = "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
 
 _classifier = None
+
+_CONFIDENCE_THRESHOLD = 0.7
 
 _CANDIDATE_LABELS = [
     "critical dangerous interaction",
@@ -57,31 +62,44 @@ def is_loaded() -> bool:
     return _classifier is not None
 
 
-def classify(description: str | None) -> str:
+def classify(description: str | None) -> tuple[str, bool]:
     """Classify an interaction description into major/moderate/minor.
 
-    Returns 'unknown' if description is empty or None.
+    Returns (severity, uncertain) where uncertain=True means the
+    classification is inferred rather than high-confidence.
+
+    Empty/None descriptions return ("unknown", True).
+    Low-confidence classifications default to ("major", True) for safety.
     """
     if not description:
-        return "unknown"
+        return ("unknown", True)
 
     if _classifier is None:
         logger.debug("Severity model not loaded, using regex fallback")
-        return _regex_fallback(description)
+        return (_regex_fallback(description), True)
 
     try:
         result = _classifier(description, _CANDIDATE_LABELS)
         top_label = result["labels"][0]
-        return _LABEL_MAP[top_label]
+        top_score = result["scores"][0]
+
+        if top_score < _CONFIDENCE_THRESHOLD:
+            logger.info(
+                "Low confidence (%.2f) for severity — defaulting to major",
+                top_score,
+            )
+            return ("major", True)
+
+        return (_LABEL_MAP[top_label], False)
     except Exception:
         logger.warning("Severity classification failed, using regex fallback", exc_info=True)
-        return _regex_fallback(description)
+        return (_regex_fallback(description), True)
 
 
 def _regex_fallback(text: str) -> str:
-    """Simple regex-based severity inference."""
+    """Simple regex-based severity inference. Defaults to 'major' for safety."""
     if _RX_CRITICAL.search(text):
         return "major"
     if _RX_WARNING.search(text):
         return "moderate"
-    return "unknown"
+    return "major"
