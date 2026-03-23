@@ -28,7 +28,7 @@ def mock_drugbank():
 def mock_severity():
     """Mock severity_classifier in every module that imports it."""
     mock = MagicMock()
-    mock.classify.return_value = "moderate"
+    mock.classify.return_value = ("moderate", False)
     mock.load_model = MagicMock()
     mock.is_loaded.return_value = True
     with patch("app.services.interaction_checker.severity_classifier", mock), \
@@ -37,7 +37,16 @@ def mock_severity():
 
 
 @pytest.fixture
-def client(mock_drugbank, mock_severity):
+def mock_severity_parser():
+    """Mock severity_parser in interaction checker."""
+    mock = MagicMock()
+    mock.parse_severity.return_value = "moderate"
+    with patch("app.services.interaction_checker.severity_parser", mock):
+        yield mock
+
+
+@pytest.fixture
+def client(mock_drugbank, mock_severity, mock_severity_parser):
     from app.main import app
     return TestClient(app)
 

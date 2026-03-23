@@ -39,6 +39,7 @@ class InteractionResult(BaseModel):
     severity: str
     description: str
     management: str
+    uncertain: bool = False
 
 
 class InteractionsResponse(BaseModel):
