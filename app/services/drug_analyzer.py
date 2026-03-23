@@ -10,6 +10,7 @@ Both passes enrich results with dosage regex and RxNorm normalization.
 import logging
 
 from app.clients import rxnorm_client
+from app.middleware.audit_log import get_audit_context
 from app.nlp import ner_model
 from app.nlp.dosage_parser import extract_dosages
 from app.nlp.ocr_cleaner import clean as ocr_clean
@@ -37,6 +38,14 @@ async def analyze(text: str) -> list[dict]:
 
     # Pass 1: NER (on cleaned text)
     entities = ner_model.predict(cleaned_text)
+
+    ctx = get_audit_context()
+    if ctx:
+        ctx.add("ner", {
+            "entities": [{"text": e.text, "label": e.label, "score": round(e.score, 4)} for e in entities],
+            "model": ner_model.MODEL_ID,
+        })
+
     drug_entities = [
         e for e in entities
         if e.label in ("CHEM", "Chemical", "CHEMICAL") and not e.text.isdigit()

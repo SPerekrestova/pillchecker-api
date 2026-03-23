@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from app.clients import drugbank_client, openfda_client
+from app.middleware.audit_log import get_audit_context
 from app.nlp import severity_classifier, severity_parser
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,17 @@ async def _format(drug_a: str, drug_b: str, match: dict, source: str) -> dict:
         severity, uncertain = await loop.run_in_executor(
             None, severity_classifier.classify, description
         )
+
+    ctx = get_audit_context()
+    if ctx:
+        ctx.add("severity_classification", {
+            "drug_a": drug_a,
+            "drug_b": drug_b,
+            "severity": severity,
+            "uncertain": uncertain,
+            "source": source,
+            "method": "template_parser" if source == "drugbank" else "zero_shot_classifier",
+        })
 
     return {
         "drug_a": drug_a,
