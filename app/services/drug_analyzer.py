@@ -12,6 +12,7 @@ import logging
 from app.clients import rxnorm_client
 from app.nlp import ner_model
 from app.nlp.dosage_parser import extract_dosages
+from app.nlp.ocr_cleaner import clean as ocr_clean
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,11 @@ async def analyze(text: str) -> list[dict]:
     dosages = extract_dosages(text)
     dosage_str = dosages[0].raw if dosages else None
 
-    # Pass 1: NER
-    entities = ner_model.predict(text)
+    # Clean OCR artifacts before NER
+    cleaned_text = ocr_clean(text)
+
+    # Pass 1: NER (on cleaned text)
+    entities = ner_model.predict(cleaned_text)
     drug_entities = [
         e for e in entities
         if e.label in ("CHEM", "Chemical", "CHEMICAL") and not e.text.isdigit()
