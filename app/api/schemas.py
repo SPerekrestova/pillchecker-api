@@ -16,6 +16,7 @@ class DrugResult(BaseModel):
     form: str | None
     source: str  # "ner" or "rxnorm_fallback"
     confidence: float
+    needs_confirmation: bool = False
 
 
 class AnalyzeResponse(BaseModel):

@@ -81,6 +81,7 @@ async def _enrich_ner_results(
             "form": None,
             "source": "ner",
             "confidence": entity.score,
+            "needs_confirmation": entity.score < 0.85,
         })
 
     results.sort(key=lambda r: r["confidence"], reverse=True)
@@ -132,7 +133,8 @@ async def _rxnorm_fallback(text: str, dosage_str: str | None) -> list[dict]:
             "dosage": dosage_str,
             "form": None,
             "source": "rxnorm_fallback",
-            "confidence": 0.5,  # Lower confidence for fallback
+            "confidence": best.score / 20.0,  # normalize approx score to 0-1 range
+            "needs_confirmation": True,
         })
         # Only return the first match in fallback mode
         break
