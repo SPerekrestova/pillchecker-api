@@ -61,6 +61,19 @@ class TestAnalyzeValidation:
         )
         assert resp.status_code == 422
 
+    def test_analyze_strips_html_from_raw_text(self, client):
+        """HTML tags must be stripped from raw_text to prevent XSS."""
+        with patch("app.services.drug_analyzer.analyze", new=AsyncMock(return_value=[])):
+            resp = client.post(
+                "/analyze",
+                json={"text": '<script>alert(1)</script>Metformin 500mg'},
+                headers={"X-API-Key": "test-key"},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "<script>" not in data["raw_text"]
+        assert "alert(1)" in data["raw_text"]
+
 
 class TestInteractionsValidation:
     def test_interactions_rejects_empty_string_drug(self, client):

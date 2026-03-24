@@ -1,5 +1,7 @@
 """POST /analyze — extract drugs from OCR text."""
 
+import re
+
 from fastapi import APIRouter
 
 from app.api.schemas import AnalyzeDataSources, AnalyzeRequest, AnalyzeResponse, DrugResult
@@ -8,12 +10,14 @@ from app.services import drug_analyzer
 
 router = APIRouter()
 
+_HTML_TAG = re.compile(r"<[^>]+>")
+
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest):
     drugs = await drug_analyzer.analyze(request.text)
     return AnalyzeResponse(
         drugs=[DrugResult(**d) for d in drugs],
-        raw_text=request.text,
+        raw_text=_HTML_TAG.sub("", request.text),
         data_sources=AnalyzeDataSources(ner_model=ner_model.MODEL_ID),
     )
