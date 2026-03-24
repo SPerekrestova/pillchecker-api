@@ -17,6 +17,18 @@ from app.nlp.ocr_cleaner import clean as ocr_clean
 
 logger = logging.getLogger(__name__)
 
+_MAX_DOSAGE_DISTANCE = 50  # max chars between drug entity end and dosage start
+
+
+def _nearest_dosage(entity_end: int, dosages: list) -> str | None:
+    """Find the dosage closest to a drug entity by character offset."""
+    if not dosages:
+        return None
+    nearest = min(dosages, key=lambda d: abs(d.start - entity_end))
+    if abs(nearest.start - entity_end) <= _MAX_DOSAGE_DISTANCE:
+        return nearest.raw
+    return None
+
 
 async def analyze(text: str) -> list[dict]:
     """Analyze OCR text and return enriched drug profiles.
@@ -53,7 +65,7 @@ async def analyze(text: str) -> list[dict]:
 
     if drug_entities:
         logger.info("NER found %d drug entities", len(drug_entities))
-        enriched = await _enrich_ner_results(drug_entities, dosage_str)
+        enriched = await _enrich_ner_results(drug_entities, dosages)
         if enriched:
             return enriched
         logger.info("All NER entities filtered out, trying RxNorm fallback")
@@ -65,7 +77,7 @@ async def analyze(text: str) -> list[dict]:
 
 async def _enrich_ner_results(
     entities: list[ner_model.Entity],
-    dosage_str: str | None,
+    dosages: list,
 ) -> list[dict]:
     """Enrich NER entities with RxNorm data."""
     results = []
@@ -86,7 +98,7 @@ async def _enrich_ner_results(
         results.append({
             "rxcui": rxcui,
             "name": name,
-            "dosage": dosage_str,
+            "dosage": _nearest_dosage(entity.end, dosages),
             "form": None,
             "source": "ner",
             "confidence": entity.score,

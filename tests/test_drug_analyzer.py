@@ -254,6 +254,33 @@ async def test_high_confidence_ner_no_confirmation():
 
 
 @pytest.mark.asyncio
+async def test_multi_drug_dosages_assigned_by_position():
+    """Each drug should get the dosage nearest to it, not the first found."""
+    entities = [
+        ner_model.Entity(text="Lisinopril", label="CHEM", score=0.93, start=0, end=10),
+        ner_model.Entity(text="Metformin", label="CHEM", score=0.92, start=22, end=31),
+    ]
+
+    async def mock_get_rxcui(name):
+        return {"Lisinopril": "29046", "Metformin": "6809"}.get(name)
+
+    with (
+        patch("app.services.drug_analyzer.ner_model.predict", return_value=entities),
+        patch(
+            "app.services.drug_analyzer.rxnorm_client.get_rxcui",
+            new=AsyncMock(side_effect=mock_get_rxcui),
+        ),
+    ):
+        results = await drug_analyzer.analyze("Lisinopril 10mg daily, Metformin 500mg")
+
+    assert len(results) == 2
+    lisinopril = next(r for r in results if r["name"] == "Lisinopril")
+    metformin = next(r for r in results if r["name"] == "Metformin")
+    assert lisinopril["dosage"] == "10mg"
+    assert metformin["dosage"] == "500mg"
+
+
+@pytest.mark.asyncio
 async def test_low_confidence_ner_needs_confirmation():
     """NER results with confidence < 0.85 should need confirmation."""
     entity = ner_model.Entity(text="Paracetamol", label="CHEM", score=0.72, start=0, end=11)
