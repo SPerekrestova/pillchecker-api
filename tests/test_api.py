@@ -51,6 +51,26 @@ def client(mock_drugbank, mock_severity, mock_severity_parser):
     return TestClient(app)
 
 
+class TestInteractionsValidation:
+    def test_interactions_rejects_empty_string_drug(self, client):
+        """Empty strings in drugs list must be rejected with 422."""
+        resp = client.post(
+            "/interactions",
+            json={"drugs": ["metformin", "", "lisinopril"]},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert resp.status_code == 422
+
+    def test_interactions_rejects_long_drug_name(self, client):
+        """Drug names over 200 chars must be rejected."""
+        resp = client.post(
+            "/interactions",
+            json={"drugs": ["a" * 201, "metformin"]},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert resp.status_code == 422
+
+
 class TestInteractionsEndpoint:
     def test_known_interaction(self, client, mock_drugbank):
         mock_drugbank.get_interactions.side_effect = [

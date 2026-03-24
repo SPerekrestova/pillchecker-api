@@ -1,5 +1,7 @@
 """Pydantic request/response models for the PillChecker API."""
 
+from typing import Annotated
+
 from pydantic import BaseModel, Field
 
 
@@ -32,7 +34,9 @@ class AnalyzeResponse(BaseModel):
 # --- POST /interactions ---
 
 class InteractionsRequest(BaseModel):
-    drugs: list[str] = Field(..., min_length=2, examples=[["ibuprofen", "warfarin"]])
+    drugs: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        ..., min_length=2, examples=[["ibuprofen", "warfarin"]]
+    )
 
 
 class DrugRef(BaseModel):
