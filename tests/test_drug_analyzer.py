@@ -49,6 +49,23 @@ async def test_low_score_candidate_rejected():
 
 
 @pytest.mark.asyncio
+async def test_rxnorm_fallback_rejects_low_score_match():
+    """RxNorm matches with score < 10.0 must be rejected to prevent false positives."""
+    weak_candidate = DrugInfo(rxcui="1490058", name="Take Action", score=8.9)
+
+    with (
+        patch("app.services.drug_analyzer.ner_model.predict", return_value=[]),
+        patch(
+            "app.services.drug_analyzer.rxnorm_client.approximate_term",
+            new=AsyncMock(return_value=[weak_candidate]),
+        ),
+    ):
+        results = await drug_analyzer.analyze("Take 1 tablet twice daily")
+
+    assert results == [], f"Expected empty results for low-score match, got: {results}"
+
+
+@pytest.mark.asyncio
 async def test_high_score_candidate_accepted():
     """A candidate with score >= threshold and a valid name must be returned."""
     high_score_candidate = DrugInfo(rxcui="5640", name="Ibuprofen", score=10.55)
@@ -77,7 +94,7 @@ async def test_high_score_candidate_accepted():
 @pytest.mark.asyncio
 async def test_empty_name_candidate_rejected():
     """A candidate with empty name (MMSL source) and empty details must be skipped."""
-    nameless_candidate = DrugInfo(rxcui="2388160", name="", score=9.0)
+    nameless_candidate = DrugInfo(rxcui="2388160", name="", score=11.0)
 
     with (
         patch(
@@ -99,7 +116,7 @@ async def test_empty_name_candidate_rejected():
 @pytest.mark.asyncio
 async def test_empty_best_name_resolved_from_details():
     """When candidate name is empty but details has a name, use the details name."""
-    nameless_candidate = DrugInfo(rxcui="5640", name="", score=9.0)
+    nameless_candidate = DrugInfo(rxcui="5640", name="", score=11.0)
 
     with (
         patch(

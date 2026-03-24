@@ -111,9 +111,9 @@ async def _enrich_ner_results(
 
 
 # Minimum approximate-term score to accept a fallback match.
-# Real drug names score ~10+; false positives (common English words
-# matched to brand names like "Hello Bello") score <4.
-_MIN_APPROX_SCORE = 6.0
+# Real drug names score ~12+; false positives like "Take Action" (8.9)
+# and "Tice BCG" (7.5) are rejected at this threshold.
+_MIN_APPROX_SCORE = 10.0
 
 
 async def _rxnorm_fallback(text: str, dosage_str: str | None) -> list[dict]:
