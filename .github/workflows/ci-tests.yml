@@ -94,7 +94,8 @@ jobs:
             set -e
             cd ~/pillchecker-api
             git pull origin main
-            docker image prune -af --filter "until=168h"
-            docker builder prune -af --filter "until=168h"
+            docker image prune -f
+            docker builder prune -af --filter "until=24h"
             docker compose up -d --build
+            docker image prune -f
             echo "Deploy complete"
