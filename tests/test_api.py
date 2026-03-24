@@ -51,6 +51,17 @@ def client(mock_drugbank, mock_severity, mock_severity_parser):
     return TestClient(app)
 
 
+class TestAnalyzeValidation:
+    def test_analyze_rejects_oversized_text(self, client):
+        """Text over 5000 chars must be rejected with 422."""
+        resp = client.post(
+            "/analyze",
+            json={"text": "Metformin 500mg " * 500},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert resp.status_code == 422
+
+
 class TestInteractionsValidation:
     def test_interactions_rejects_empty_string_drug(self, client):
         """Empty strings in drugs list must be rejected with 422."""

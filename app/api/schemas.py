@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 # --- POST /analyze ---
 
 class AnalyzeRequest(BaseModel):
-    text: str = Field(..., min_length=1, examples=["BRUFEN Ibuprofen 400 mg Film-Coated Tablets"])
+    text: str = Field(..., min_length=1, max_length=5000, examples=["BRUFEN Ibuprofen 400 mg Film-Coated Tablets"])
 
 
 class DrugResult(BaseModel):
