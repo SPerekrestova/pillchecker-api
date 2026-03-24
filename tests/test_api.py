@@ -85,6 +85,15 @@ class TestInteractionsValidation:
         )
         assert resp.status_code == 422
 
+    def test_interactions_rejects_whitespace_only_drug(self, client):
+        """Whitespace-only strings must be rejected after stripping."""
+        resp = client.post(
+            "/interactions",
+            json={"drugs": ["  ", "metformin"]},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert resp.status_code == 422
+
     def test_interactions_rejects_long_drug_name(self, client):
         """Drug names over 200 chars must be rejected."""
         resp = client.post(
