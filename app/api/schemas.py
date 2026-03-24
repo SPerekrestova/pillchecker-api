@@ -27,6 +27,7 @@ class AnalyzeResponse(BaseModel):
     drugs: list[DrugResult]
     raw_text: str
     data_sources: AnalyzeDataSources | None = None
+    note: str | None = None
 
 
 # --- POST /interactions ---
