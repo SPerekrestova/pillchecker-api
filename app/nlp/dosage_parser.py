@@ -38,6 +38,7 @@ class Dosage:
     raw: str        # Original matched text, e.g. "400 mg"
     value: float    # Numeric value, e.g. 400.0
     unit: str       # Unit string, e.g. "mg"
+    start: int = 0  # Character offset in source text
     per_value: float | None = None   # Denominator value for compound
     per_unit: str | None = None      # Denominator unit for compound
 
@@ -50,6 +51,7 @@ def extract_dosages(text: str) -> list[Dosage]:
     dosages = []
     for match in DOSAGE_PATTERN.finditer(text):
         raw = match.group(0)
+        pos = match.start()
 
         # Try compound first (groups 1-4)
         if match.group(1) and match.group(4):
@@ -57,6 +59,7 @@ def extract_dosages(text: str) -> list[Dosage]:
                 raw=raw,
                 value=float(match.group(1)),
                 unit=match.group(2),
+                start=pos,
                 per_value=float(match.group(3)) if match.group(3) else 1.0,
                 per_unit=match.group(4),
             ))
@@ -66,6 +69,7 @@ def extract_dosages(text: str) -> list[Dosage]:
                 raw=raw,
                 value=float(match.group(5)),
                 unit=match.group(6),
+                start=pos,
                 per_unit=match.group(7),
             ))
         # Try simple (groups 8-9)
@@ -74,6 +78,7 @@ def extract_dosages(text: str) -> list[Dosage]:
                 raw=raw,
                 value=float(match.group(8)),
                 unit=match.group(9),
+                start=pos,
             ))
         # Percentage (group 10)
         elif match.group(10):
@@ -81,6 +86,7 @@ def extract_dosages(text: str) -> list[Dosage]:
                 raw=raw,
                 value=float(match.group(10)),
                 unit="%",
+                start=pos,
             ))
 
     return dosages

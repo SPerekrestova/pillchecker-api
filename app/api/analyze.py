@@ -13,11 +13,28 @@ router = APIRouter()
 _HTML_TAG = re.compile(r"<[^>]+>")
 
 
+def _is_predominantly_non_latin(text: str) -> bool:
+    """Check if the alphabetic characters are mostly non-Latin."""
+    alpha_chars = [c for c in text if c.isalpha()]
+    if not alpha_chars:
+        return False
+    latin_count = sum(1 for c in alpha_chars if c.isascii())
+    return (latin_count / len(alpha_chars)) < 0.3
+
+
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest):
-    drugs = await drug_analyzer.analyze(request.text)
+    note = None
+
+    if _is_predominantly_non_latin(request.text):
+        drugs = []
+        note = "Non-Latin text detected; only Latin-script drug names are supported"
+    else:
+        drugs = await drug_analyzer.analyze(request.text)
+
     return AnalyzeResponse(
         drugs=[DrugResult(**d) for d in drugs],
         raw_text=_HTML_TAG.sub("", request.text),
         data_sources=AnalyzeDataSources(ner_model=ner_model.MODEL_ID),
+        note=note,
     )

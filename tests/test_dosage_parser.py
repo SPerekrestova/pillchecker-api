@@ -118,6 +118,15 @@ class TestMultipleDosages:
         assert result[0].value == 400.0
 
 
+class TestDosagePosition:
+    def test_dosage_includes_start_position(self):
+        """Dosage objects must include the character offset where they appear."""
+        dosages = extract_dosages("Lisinopril 10mg daily, Metformin 500mg")
+        assert len(dosages) == 2
+        assert dosages[0].start == 11   # "10mg" starts at char 11
+        assert dosages[1].start == 33   # "500mg" starts at char 33
+
+
 class TestEdgeCases:
     def test_no_dosage(self):
         result = extract_dosages("Take with food and water")

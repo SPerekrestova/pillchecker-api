@@ -13,7 +13,7 @@ import re
 from app.clients import rxnorm_client
 from app.middleware.audit_log import get_audit_context
 from app.nlp import ner_model
-from app.nlp.dosage_parser import extract_dosages
+from app.nlp.dosage_parser import Dosage, extract_dosages
 from app.nlp.ocr_cleaner import clean as ocr_clean
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,19 @@ def _is_valid_entity_name(name: str) -> bool:
     return len(stripped) > 1 and not _PUNCTUATION_ONLY.match(stripped)
 
 
+_MAX_DOSAGE_DISTANCE = 50  # max chars between drug entity end and dosage start
+
+
+def _nearest_dosage(entity_end: int, dosages: list[Dosage]) -> str | None:
+    """Find the dosage closest to a drug entity by character offset."""
+    if not dosages:
+        return None
+    nearest = min(dosages, key=lambda d: abs(d.start - entity_end))
+    if abs(nearest.start - entity_end) <= _MAX_DOSAGE_DISTANCE:
+        return nearest.raw
+    return None
+
+
 async def analyze(text: str) -> list[dict]:
     """Analyze OCR text and return enriched drug profiles.
 
@@ -38,12 +51,12 @@ async def analyze(text: str) -> list[dict]:
       - source: "ner" | "rxnorm_fallback"
       - confidence: float
     """
-    # Extract dosages from the full text (used for both passes)
-    dosages = extract_dosages(text)
-    dosage_str = dosages[0].raw if dosages else None
-
     # Clean OCR artifacts before NER
     cleaned_text = ocr_clean(text)
+
+    # Extract dosages from cleaned text so positions align with NER entities
+    dosages = extract_dosages(cleaned_text)
+    dosage_str = dosages[0].raw if dosages else None
 
     # Pass 1: NER (on cleaned text)
     entities = ner_model.predict(cleaned_text)
@@ -64,7 +77,7 @@ async def analyze(text: str) -> list[dict]:
 
     if drug_entities:
         logger.info("NER found %d drug entities", len(drug_entities))
-        enriched = await _enrich_ner_results(drug_entities, dosage_str)
+        enriched = await _enrich_ner_results(drug_entities, dosages)
         if enriched:
             return enriched
         logger.info("All NER entities filtered out, trying RxNorm fallback")
@@ -76,7 +89,7 @@ async def analyze(text: str) -> list[dict]:
 
 async def _enrich_ner_results(
     entities: list[ner_model.Entity],
-    dosage_str: str | None,
+    dosages: list[Dosage],
 ) -> list[dict]:
     """Enrich NER entities with RxNorm data."""
     results = []
@@ -97,7 +110,7 @@ async def _enrich_ner_results(
         results.append({
             "rxcui": rxcui,
             "name": name,
-            "dosage": dosage_str,
+            "dosage": _nearest_dosage(entity.end, dosages),
             "form": None,
             "source": "ner",
             "confidence": entity.score,
@@ -110,9 +123,9 @@ async def _enrich_ner_results(
 
 
 # Minimum approximate-term score to accept a fallback match.
-# Real drug names score ~10+; false positives (common English words
-# matched to brand names like "Hello Bello") score <4.
-_MIN_APPROX_SCORE = 6.0
+# Real drug names score ~12+; false positives like "Take Action" (8.9)
+# and "Tice BCG" (7.5) are rejected at this threshold.
+_MIN_APPROX_SCORE = 10.0
 
 
 async def _rxnorm_fallback(text: str, dosage_str: str | None) -> list[dict]:

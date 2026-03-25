@@ -74,6 +74,31 @@ class TestAnalyzeValidation:
         assert "<script>" not in data["raw_text"]
         assert "alert(1)" in data["raw_text"]
 
+    def test_analyze_non_latin_text_returns_note(self, client):
+        """Non-Latin text should return empty drugs with explanatory note."""
+        resp = client.post(
+            "/analyze",
+            json={"text": "阿莫西林胶囊 500mg"},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["drugs"] == []
+        assert "note" in data
+        assert "Latin" in data["note"]
+
+    def test_analyze_mixed_script_processes_normally(self, client):
+        """Text with mostly Latin chars should process normally even with some non-Latin."""
+        with patch("app.api.analyze.drug_analyzer.analyze", new=AsyncMock(return_value=[])):
+            resp = client.post(
+                "/analyze",
+                json={"text": "Metformin 500mg (メトホルミン)"},
+                headers={"X-API-Key": "test-key"},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("note") is None or "Non-Latin" not in data.get("note", "")
+
 
 class TestInteractionsValidation:
     def test_interactions_rejects_empty_string_drug(self, client):
