@@ -8,6 +8,7 @@ Both passes enrich results with dosage regex and RxNorm normalization.
 """
 
 import logging
+import re
 
 from app.clients import rxnorm_client
 from app.middleware.audit_log import get_audit_context
@@ -16,6 +17,15 @@ from app.nlp.dosage_parser import Dosage, extract_dosages
 from app.nlp.ocr_cleaner import clean as ocr_clean
 
 logger = logging.getLogger(__name__)
+
+_PUNCTUATION_ONLY = re.compile(r"^[^\w]+$")
+
+
+def _is_valid_entity_name(name: str) -> bool:
+    """Reject empty, single-char, or punctuation-only entity names."""
+    stripped = name.strip()
+    return len(stripped) > 1 and not _PUNCTUATION_ONLY.match(stripped)
+
 
 _MAX_DOSAGE_DISTANCE = 50  # max chars between drug entity end and dosage start
 
@@ -60,7 +70,9 @@ async def analyze(text: str) -> list[dict]:
 
     drug_entities = [
         e for e in entities
-        if e.label in ("CHEM", "Chemical", "CHEMICAL") and not e.text.isdigit()
+        if e.label in ("CHEM", "Chemical", "CHEMICAL")
+        and not e.text.isdigit()
+        and _is_valid_entity_name(e.text)
     ]
 
     if drug_entities:

@@ -51,7 +51,29 @@ def client(mock_drugbank, mock_severity, mock_severity_parser):
     return TestClient(app)
 
 
-class TestAnalyzeEndpoint:
+class TestAnalyzeValidation:
+    def test_analyze_rejects_oversized_text(self, client):
+        """Text over 5000 chars must be rejected with 422."""
+        resp = client.post(
+            "/analyze",
+            json={"text": "Metformin 500mg " * 500},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert resp.status_code == 422
+
+    def test_analyze_strips_html_from_raw_text(self, client):
+        """HTML tags must be stripped from raw_text to prevent XSS."""
+        with patch("app.services.drug_analyzer.analyze", new=AsyncMock(return_value=[])):
+            resp = client.post(
+                "/analyze",
+                json={"text": '<script>alert(1)</script>Metformin 500mg'},
+                headers={"X-API-Key": "test-key"},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "<script>" not in data["raw_text"]
+        assert "alert(1)" in data["raw_text"]
+
     def test_analyze_non_latin_text_returns_note(self, client):
         """Non-Latin text should return empty drugs with explanatory note."""
         resp = client.post(
@@ -76,6 +98,35 @@ class TestAnalyzeEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data.get("note") is None or "Non-Latin" not in data.get("note", "")
+
+
+class TestInteractionsValidation:
+    def test_interactions_rejects_empty_string_drug(self, client):
+        """Empty strings in drugs list must be rejected with 422."""
+        resp = client.post(
+            "/interactions",
+            json={"drugs": ["metformin", "", "lisinopril"]},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert resp.status_code == 422
+
+    def test_interactions_rejects_whitespace_only_drug(self, client):
+        """Whitespace-only strings must be rejected after stripping."""
+        resp = client.post(
+            "/interactions",
+            json={"drugs": ["  ", "metformin"]},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert resp.status_code == 422
+
+    def test_interactions_rejects_long_drug_name(self, client):
+        """Drug names over 200 chars must be rejected."""
+        resp = client.post(
+            "/interactions",
+            json={"drugs": ["a" * 201, "metformin"]},
+            headers={"X-API-Key": "test-key"},
+        )
+        assert resp.status_code == 422
 
 
 class TestInteractionsEndpoint:

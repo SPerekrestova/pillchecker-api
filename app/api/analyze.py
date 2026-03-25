@@ -1,5 +1,7 @@
 """POST /analyze — extract drugs from OCR text."""
 
+import re
+
 from fastapi import APIRouter
 
 from app.api.schemas import AnalyzeDataSources, AnalyzeRequest, AnalyzeResponse, DrugResult
@@ -7,6 +9,8 @@ from app.nlp import ner_model
 from app.services import drug_analyzer
 
 router = APIRouter()
+
+_HTML_TAG = re.compile(r"<[^>]+>")
 
 
 def _is_predominantly_non_latin(text: str) -> bool:
@@ -30,7 +34,7 @@ async def analyze(request: AnalyzeRequest):
 
     return AnalyzeResponse(
         drugs=[DrugResult(**d) for d in drugs],
-        raw_text=request.text,
+        raw_text=_HTML_TAG.sub("", request.text),
         data_sources=AnalyzeDataSources(ner_model=ner_model.MODEL_ID),
         note=note,
     )

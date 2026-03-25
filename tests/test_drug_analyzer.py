@@ -313,6 +313,48 @@ async def test_low_confidence_ner_needs_confirmation():
 
 
 @pytest.mark.asyncio
+async def test_single_char_ner_entity_filtered():
+    """Single-character NER entities (e.g. '-') must be filtered out."""
+    entities = [
+        ner_model.Entity(text="-", label="CHEM", score=0.95, start=0, end=1),
+        ner_model.Entity(text="Metformin", label="CHEM", score=0.93, start=5, end=14),
+    ]
+
+    with (
+        patch("app.services.drug_analyzer.ner_model.predict", return_value=entities),
+        patch(
+            "app.services.drug_analyzer.rxnorm_client.get_rxcui",
+            new=AsyncMock(return_value="6809"),
+        ),
+    ):
+        results = await drug_analyzer.analyze("- Metformin 500mg")
+
+    assert len(results) == 1
+    assert results[0]["name"] == "Metformin"
+
+
+@pytest.mark.asyncio
+async def test_punctuation_only_ner_entity_filtered():
+    """Entities that are pure punctuation must be filtered out."""
+    entities = [
+        ner_model.Entity(text="...", label="CHEM", score=0.90, start=0, end=3),
+        ner_model.Entity(text="Lisinopril", label="CHEM", score=0.92, start=5, end=15),
+    ]
+
+    with (
+        patch("app.services.drug_analyzer.ner_model.predict", return_value=entities),
+        patch(
+            "app.services.drug_analyzer.rxnorm_client.get_rxcui",
+            new=AsyncMock(return_value="29046"),
+        ),
+    ):
+        results = await drug_analyzer.analyze("... Lisinopril 10mg")
+
+    assert len(results) == 1
+    assert results[0]["name"] == "Lisinopril"
+
+
+@pytest.mark.asyncio
 async def test_ner_results_sorted_by_confidence_descending():
     """Results must be sorted by confidence, highest first."""
     entities = [
