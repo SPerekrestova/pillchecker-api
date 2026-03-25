@@ -12,7 +12,7 @@ import logging
 from app.clients import rxnorm_client
 from app.middleware.audit_log import get_audit_context
 from app.nlp import ner_model
-from app.nlp.dosage_parser import extract_dosages
+from app.nlp.dosage_parser import Dosage, extract_dosages
 from app.nlp.ocr_cleaner import clean as ocr_clean
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _MAX_DOSAGE_DISTANCE = 50  # max chars between drug entity end and dosage start
 
 
-def _nearest_dosage(entity_end: int, dosages: list) -> str | None:
+def _nearest_dosage(entity_end: int, dosages: list[Dosage]) -> str | None:
     """Find the dosage closest to a drug entity by character offset."""
     if not dosages:
         return None
@@ -41,12 +41,12 @@ async def analyze(text: str) -> list[dict]:
       - source: "ner" | "rxnorm_fallback"
       - confidence: float
     """
-    # Extract dosages from the full text (used for both passes)
-    dosages = extract_dosages(text)
-    dosage_str = dosages[0].raw if dosages else None
-
     # Clean OCR artifacts before NER
     cleaned_text = ocr_clean(text)
+
+    # Extract dosages from cleaned text so positions align with NER entities
+    dosages = extract_dosages(cleaned_text)
+    dosage_str = dosages[0].raw if dosages else None
 
     # Pass 1: NER (on cleaned text)
     entities = ner_model.predict(cleaned_text)
@@ -77,7 +77,7 @@ async def analyze(text: str) -> list[dict]:
 
 async def _enrich_ner_results(
     entities: list[ner_model.Entity],
-    dosages: list,
+    dosages: list[Dosage],
 ) -> list[dict]:
     """Enrich NER entities with RxNorm data."""
     results = []
