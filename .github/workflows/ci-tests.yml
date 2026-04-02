@@ -95,7 +95,7 @@ jobs:
             cd ~/pillchecker-api
             git pull origin main
             docker image prune -f
-            docker builder prune -af --filter "until=24h"
+            docker builder prune -af
             docker compose down --remove-orphans
             docker compose up -d --build
             docker image prune -f
