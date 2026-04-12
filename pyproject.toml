@@ -10,7 +10,7 @@ dependencies = [
     "torch>=2.5.0",
     "httpx>=0.28.0",
     "pydantic>=2.10.0",
-    "mcp>=1.26.0",
+    "mcp==1.27.0",
 ]
 
 [dependency-groups]
