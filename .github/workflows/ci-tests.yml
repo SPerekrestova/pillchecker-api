@@ -82,6 +82,9 @@ jobs:
     needs: integration-tests
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     steps:
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.2.0
@@ -96,7 +99,8 @@ jobs:
             git pull origin main
             docker image prune -f
             docker builder prune -af
-            docker compose down --remove-orphans
-            docker compose up -d --build
+            docker compose down --remove-orphans --timeout 30
+            docker rm -f pillchecker-api-api-1 pillchecker-api-nginx-1 2>/dev/null || true
+            docker compose up -d --build --force-recreate --remove-orphans
             docker image prune -f
             echo "Deploy complete"
