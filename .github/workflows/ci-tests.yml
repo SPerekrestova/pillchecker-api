@@ -82,6 +82,9 @@ jobs:
     needs: integration-tests
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     steps:
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.2.0
