@@ -12,6 +12,3 @@ services:
       - HF_HOME=/app/models
     restart: "no"
 
-  nginx:
-    profiles:
-      - disabled

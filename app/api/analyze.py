@@ -27,18 +27,18 @@ from fastapi import Request
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 @limiter.limit("10/minute")
-async def analyze(request: AnalyzeRequest, fast_request: Request):
+async def analyze(request: Request, body: AnalyzeRequest):
     note = None
 
-    if _is_predominantly_non_latin(request.text):
+    if _is_predominantly_non_latin(body.text):
         drugs = []
         note = "Non-Latin text detected; only Latin-script drug names are supported"
     else:
-        drugs = await drug_analyzer.analyze(request.text)
+        drugs = await drug_analyzer.analyze(body.text)
 
     return AnalyzeResponse(
         drugs=[DrugResult(**d) for d in drugs],
-        raw_text=_HTML_TAG.sub("", request.text),
+        raw_text=_HTML_TAG.sub("", body.text),
         data_sources=AnalyzeDataSources(ner_model=ner_model.MODEL_ID),
         note=note,
     )

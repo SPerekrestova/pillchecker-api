@@ -1,8 +1,8 @@
 services:
   api:
     build: .
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     volumes:
       - model-cache:/app/models
     environment:

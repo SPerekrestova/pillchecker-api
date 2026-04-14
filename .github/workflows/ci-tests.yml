@@ -126,6 +126,7 @@ jobs:
             HF_TOKEN=HF_TOKEN:latest
           flags: |
             --allow-unauthenticated
+            --port=8000
             --memory=2Gi
             --cpu=1
             --concurrency=80

@@ -14,8 +14,8 @@ from fastapi import Request
 
 @router.post("/interactions", response_model=InteractionsResponse)
 @limiter.limit("10/minute")
-async def check_interactions(request: InteractionsRequest, fast_request: Request):
-    result = await interaction_checker.check(request.drugs)
+async def check_interactions(request: Request, body: InteractionsRequest):
+    result = await interaction_checker.check(body.drugs)
     return InteractionsResponse(
         **result,
         data_sources=InteractionsDataSources(
