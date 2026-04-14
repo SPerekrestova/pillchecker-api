@@ -17,6 +17,7 @@ models/
 docs/*
 !docs/openapi.json
 .idea
+.rtk/
 
 .gemini/
 gha-creds-*.json
