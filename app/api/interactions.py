@@ -9,8 +9,12 @@ from app.services import interaction_checker
 router = APIRouter()
 
 
+from app.main import limiter
+from fastapi import Request
+
 @router.post("/interactions", response_model=InteractionsResponse)
-async def check_interactions(request: InteractionsRequest):
+@limiter.limit("10/minute")
+async def check_interactions(request: InteractionsRequest, fast_request: Request):
     result = await interaction_checker.check(request.drugs)
     return InteractionsResponse(
         **result,

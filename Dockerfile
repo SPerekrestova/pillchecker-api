@@ -6,11 +6,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock .python-version ./
 
 # Install dependencies only (locked, no project code yet)
-RUN uv sync --frozen --no-install-project --no-dev
+RUN uv sync --no-install-project --no-dev
 
 # Copy application code and install the project
 COPY app/ app/
-RUN uv sync --frozen --no-dev
+RUN uv sync --no-dev
 
 # --- Node.js build stage ---
 FROM node:20-bookworm AS node-builder

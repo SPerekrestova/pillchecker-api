@@ -22,8 +22,12 @@ def _is_predominantly_non_latin(text: str) -> bool:
     return (latin_count / len(alpha_chars)) < 0.3
 
 
+from app.main import limiter
+from fastapi import Request
+
 @router.post("/analyze", response_model=AnalyzeResponse)
-async def analyze(request: AnalyzeRequest):
+@limiter.limit("10/minute")
+async def analyze(request: AnalyzeRequest, fast_request: Request):
     note = None
 
     if _is_predominantly_non_latin(request.text):

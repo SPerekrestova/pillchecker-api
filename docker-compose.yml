@@ -11,17 +11,5 @@ services:
       - API_KEY=${API_KEY}
     restart: unless-stopped
 
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./certs/live/pillchecker.duckdns.org:/etc/letsencrypt/live/pillchecker.duckdns.org:ro
-    depends_on:
-      - api
-    restart: unless-stopped
-
 volumes:
   model-cache:
