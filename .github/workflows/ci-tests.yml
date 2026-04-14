@@ -130,3 +130,4 @@ jobs:
             --memory=2Gi
             --cpu=1
             --concurrency=80
+            --service-account=deploy-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
