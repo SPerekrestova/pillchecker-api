@@ -61,11 +61,14 @@ The `eval/` directory contains a benchmark suite that measures NER accuracy on s
 
 **Dataset**: 11,796 cases generated from the [MattBastar/Medicine_Details](https://huggingface.co/datasets/MattBastar/Medicine_Details) HuggingFace dataset, with configurable OCR noise levels (clean, light, heavy).
 
-| Noise Level | Precision | Recall | F1 |
-|-------------|-----------|--------|------|
-| Clean | 46.9% | 84.4% | 60.3% |
-| Light OCR artifacts | 44.9% | 79.8% | 57.5% |
-| Heavy OCR distortion | 26.2% | 53.5% | 35.2% |
+| Pipeline / Noise Level | Precision | Recall | F1 |
+|------------------------|-----------|--------|----|
+| Bare NER (Clean) | 46.9% | 84.4% | 60.3% |
+| Bare NER (Light Noise) | 44.9% | 79.8% | 57.5% |
+| Bare NER (Heavy Noise) | 26.2% | 53.5% | 35.2% |
+| **Full Pipeline (Clean)** | **71.6%** | **81.0%** | **76.0%** |
+| **Full Pipeline (Light Noise)** | **74.4%** | **79.8%** | **77.0%** |
+| **Full Pipeline (Heavy Noise)** | **65.6%** | **47.6%** | **55.2%** |
 
 ```bash
 uv run python eval/prepare_hf_dataset.py           # generate dataset

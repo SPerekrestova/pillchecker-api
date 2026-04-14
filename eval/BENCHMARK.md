@@ -108,7 +108,7 @@ without RxNorm validation, to isolate the NER model's behavior on packaging text
 
 ## Results
 
-### By Noise Level (500-case samples)
+### By Noise Level (Bare NER, 500-case samples)
 
 | Noise | Precision | Recall | F1 | Detection |
 |-------|-----------|--------|------|-----------|
@@ -117,6 +117,19 @@ without RxNorm validation, to isolate the NER model's behavior on packaging text
 | **heavy** (40% errors + splits) | 26.2% | 53.5% | 35.2% | 99.8% |
 
 Detection rate = percentage of cases where NER found at least one entity.
+
+### Full Pipeline vs Bare NER (50-case samples)
+
+| Pipeline Step | Noise | Precision | Recall | F1 | Latency / Case |
+|---------------|-------|-----------|--------|----|----------------|
+| **Bare NER** | none | 48.6% | 81.0% | 60.7% | 64ms |
+| **Full Pipeline** | none | 71.6% | 81.0% | 76.0% | 961ms |
+| **Bare NER** | light | 47.5% | 79.8% | 59.6% | 69ms |
+| **Full Pipeline** | light | 74.4% | 79.8% | 77.0% | 1089ms |
+| **Bare NER** | heavy | 24.7% | 47.6% | 32.5% | 78ms |
+| **Full Pipeline** | heavy | 65.6% | 47.6% | 55.2% | 2597ms |
+
+*The RxNorm validation step successfully rejected 37 False Positives (boosting precision by ~23 points) without hurting recall. However, relying on an external HTTP API adds nearly 900ms of latency per case.*
 
 ### By Category (clean text, 500 cases)
 
