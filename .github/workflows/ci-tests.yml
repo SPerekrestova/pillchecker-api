@@ -22,7 +22,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync
 
       - name: Run tests
         run: uv run pytest tests/ --ignore=tests/test_rxnorm_client.py -v
@@ -82,25 +82,51 @@ jobs:
     needs: integration-tests
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
     concurrency:
       group: deploy-production
       cancel-in-progress: false
     steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1.2.0
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: 2222
-          script: |
-            set -e
-            cd ~/pillchecker-api
-            git pull origin main
-            docker image prune -f
-            docker builder prune -af
-            docker compose down --remove-orphans --timeout 30
-            docker rm -f pillchecker-api-api-1 pillchecker-api-nginx-1 2>/dev/null || true
-            docker compose up -d --build --force-recreate --remove-orphans
-            docker image prune -f
-            echo "Deploy complete"
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker europe-west1-docker.pkg.dev
+
+      - name: Build and Push Container
+        run: |
+          IMAGE_NAME="europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}"
+          docker build \
+            --build-arg DRUGBANK_DB_REPO="${{ secrets.DRUGBANK_DB_REPO }}" \
+            -t $IMAGE_NAME .
+          docker push $IMAGE_NAME
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: pillchecker-api
+          image: europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}
+          region: europe-west1
+          env_vars: |
+            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
+          secrets: |
+            API_KEY=API_KEY:latest
+            HF_TOKEN=HF_TOKEN:latest
+          flags: |
+            --allow-unauthenticated
+            --port=8000
+            --memory=2Gi
+            --cpu=1
+            --concurrency=80
