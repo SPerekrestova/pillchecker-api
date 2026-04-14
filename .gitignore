@@ -32,3 +32,5 @@ eval/results.json
 eval/.medicine_details_cache.csv
 eval/hf_medicine_dataset.json
 eval/images/
+CLAUDE.md
+article.md
