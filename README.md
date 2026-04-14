@@ -2,7 +2,7 @@
 
 PillChecker helps users find out if two medications are safe to take at the same time. This repository contains the backend API that identifies drugs from OCR text and checks for dangerous interactions using DrugBank pharmaceutical data.
 
-> **⚠️ MEDICAL DISCLAIMER**
+> **MEDICAL DISCLAIMER**
 >
 > This service is provided for **informational and self-educational purposes only**. While the application utilizes data from respected pharmaceutical sources, the information provided should **not** be treated as medical advice, diagnosis, or treatment.
 >
@@ -14,20 +14,28 @@ PillChecker helps users find out if two medications are safe to take at the same
 
 ### Drug Identification
 
-Converts unstructured OCR text into standardized drug records using a two-pass strategy:
+Converts unstructured OCR text into standardized drug records using a multi-step strategy:
 
-1. **NER**: The **[OpenMed-NER-PharmaDetect](https://huggingface.co/OpenMed/OpenMed-NER-PharmaDetect-ModernClinical-149M)** model (149M parameters) extracts chemical entity names from noisy text.
-2. **Fallback**: If NER yields no results, an approximate term search via the **RxNorm REST API** catches brand names (e.g., "Advil" → ibuprofen).
-3. **Enrichment**: A regex parser extracts dosages (e.g., "400 mg"), and the RxNorm API maps every identified drug to its **RxCUI** for standardized downstream lookups.
+1. **OCR Cleaning**: The `ocr_cleaner` normalizes common OCR artifacts before NER: digit-letter confusion (`0`/`o`, `1`/`l`), `rn`→`m` in drug names, ligatures, invisible characters, and whitespace.
+2. **NER**: The **[OpenMed-NER-PharmaDetect-BioPatient-108M](https://huggingface.co/OpenMed/OpenMed-NER-PharmaDetect-BioPatient-108M)** model (108M parameters) extracts chemical entity names from the cleaned text.
+3. **Fallback**: If NER yields no results, an approximate term search via the **RxNorm REST API** catches brand names (e.g., "Advil" -> ibuprofen).
+4. **Enrichment**: A regex parser extracts dosages (e.g., "400 mg"), and the RxNorm API maps every identified drug to its **RxCUI** for standardized downstream lookups.
+5. **Confidence**: Results with NER score below 0.85 or sourced from the RxNorm fallback are flagged with `needs_confirmation = true` to prompt user verification.
 
 ### Interaction Checking
 
-Drug–drug interactions are resolved against the **DrugBank** pharmaceutical database via a vendored MCP server:
+Drug-drug interactions are resolved against the **DrugBank** pharmaceutical database via a vendored MCP server:
 
-1. **DrugBank MCP server**: A Node.js process (vendored under `drugbank-mcp-server/`) communicates over stdio using the Model Context Protocol. It serves a pre-built SQLite database (~19,800 drugs) with structured pairwise interaction data.
-2. **Bidirectional lookup**: For each drug pair, the checker queries both directions (A→B and B→A) in parallel using `asyncio.gather()`.
-3. **Severity classification**: Interaction descriptions are classified as *major*, *moderate*, or *minor* by a **DeBERTa v3** zero-shot model, with a regex fallback for descriptions containing explicit severity keywords.
-4. **Caching**: Drug interaction records are cached in-process for 24 hours to avoid repeated MCP round-trips.
+1. **DrugBank MCP server**: A Node.js process (vendored under `drugbank-mcp-server/`) communicates over stdio using the Model Context Protocol. It serves a pre-built SQLite database (~17,400 drugs) with structured pairwise interaction data.
+2. **Bidirectional lookup**: For each drug pair, the checker queries both directions (A->B and B->A) in parallel using `asyncio.gather()`.
+3. **Severity classification**: Interaction descriptions are first parsed by a deterministic **template parser** that matches regex patterns in DrugBank text. If the parser cannot determine severity, a **DeBERTa v3** zero-shot classifier is used as fallback. Unknown severity defaults to `major` with `uncertain = true`.
+4. **Caching**: DrugBank interaction records are cached in-process for 4 hours; RxNorm lookups are cached for 24 hours.
+
+### Transparency
+
+Both `/analyze` and `/interactions` responses include:
+- `data_sources`: which models and databases were used for the result
+- `limitations` (interactions only): scope disclaimers about what the system does and does not cover
 
 ### Docker Build
 
@@ -39,17 +47,36 @@ The image uses a three-stage build to keep layers small and reproducible:
 
 ## API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Liveness check |
-| `GET` | `/health/data` | Readiness — confirms DrugBank MCP connection |
-| `POST` | `/analyze` | Extract drugs from OCR text |
-| `POST` | `/interactions` | Check interactions for a list of drug names |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | No | Liveness check |
+| `GET` | `/health/data` | No | Readiness -- confirms DrugBank MCP connection |
+| `POST` | `/analyze` | API key | Extract drugs from OCR text |
+| `POST` | `/interactions` | API key | Check interactions for a list of drug names |
+| `POST` | `/admin/cache/clear` | API key | Clear all in-memory caches |
+
+## Eval Benchmark
+
+The `eval/` directory contains a benchmark suite that measures NER accuracy on synthesized pharmaceutical pack-label text. See [`eval/BENCHMARK.md`](eval/BENCHMARK.md) for methodology and results.
+
+**Dataset**: 11,796 cases generated from the [MattBastar/Medicine_Details](https://huggingface.co/datasets/MattBastar/Medicine_Details) HuggingFace dataset, with configurable OCR noise levels (clean, light, heavy).
+
+| Noise Level | Precision | Recall | F1 |
+|-------------|-----------|--------|------|
+| Clean | 46.9% | 84.4% | 60.3% |
+| Light OCR artifacts | 44.9% | 79.8% | 57.5% |
+| Heavy OCR distortion | 26.2% | 53.5% | 35.2% |
+
+```bash
+uv run python eval/prepare_hf_dataset.py           # generate dataset
+uv run python eval/benchmark.py --limit 500         # run benchmark
+```
 
 ## Acknowledgments
 
-- **[OpenMed NER PharmaDetect](https://huggingface.co/OpenMed/OpenMed-NER-PharmaDetect-ModernClinical-149M)** — drug entity recognition model. License: Apache 2.0
-- **[RxNorm REST API](https://lhncbc.nlm.nih.gov/RxNav/APIs/RxNormAPIs.html)** — drug name normalization and RxCUI mapping. Provided by NLM (free to use).
-- **[DrugBank](https://www.drugbank.com/)** — pharmaceutical database providing structured drug–drug interaction data. Accessed via the [openpharma-org/drugbank-mcp-server](https://github.com/openpharma-org/drugbank-mcp-server) open-source MCP server.
-- **[DeBERTa-v3-base-mnli-fever-anli](https://huggingface.co/MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli)** — zero-shot classifier for interaction severity. License: MIT
-- **[Hugging Face Transformers](https://huggingface.co/docs/transformers)** — NLP pipeline library. License: Apache 2.0
+- **[OpenMed NER PharmaDetect](https://huggingface.co/OpenMed/OpenMed-NER-PharmaDetect-BioPatient-108M)** -- drug entity recognition model (108M params). License: Apache 2.0
+- **[RxNorm REST API](https://lhncbc.nlm.nih.gov/RxNav/APIs/RxNormAPIs.html)** -- drug name normalization and RxCUI mapping. Provided by NLM (free to use).
+- **[DrugBank](https://www.drugbank.com/)** -- pharmaceutical database providing structured drug-drug interaction data. Accessed via the [openpharma-org/drugbank-mcp-server](https://github.com/openpharma-org/drugbank-mcp-server) open-source MCP server.
+- **[DeBERTa-v3-base-mnli-fever-anli](https://huggingface.co/MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli)** -- zero-shot classifier for interaction severity. License: MIT
+- **[Hugging Face Transformers](https://huggingface.co/docs/transformers)** -- NLP pipeline library. License: Apache 2.0
+- **[MattBastar/Medicine_Details](https://huggingface.co/datasets/MattBastar/Medicine_Details)** -- benchmark dataset (11.8K medicines with compositions).

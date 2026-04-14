@@ -26,3 +26,8 @@ certs/
 drugbank-mcp-server/node_modules/
 drugbank-mcp-server/data/
 drugbank-mcp-server/build/
+
+eval/results.json
+eval/.medicine_details_cache.csv
+eval/hf_medicine_dataset.json
+eval/images/
