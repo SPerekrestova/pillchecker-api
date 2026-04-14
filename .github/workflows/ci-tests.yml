@@ -132,7 +132,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: integration-tests
+    needs: [unit-tests, integration-tests, build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -154,23 +154,11 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for Artifact Registry
-        run: |
-          gcloud auth configure-docker europe-west1-docker.pkg.dev
-
-      - name: Build and Push Container
-        run: |
-          IMAGE_NAME="europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}"
-          docker build \
-            --build-arg DRUGBANK_DB_REPO="${{ secrets.DRUGBANK_DB_REPO }}" \
-            -t $IMAGE_NAME .
-          docker push $IMAGE_NAME
-
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: pillchecker-api
-          image: europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}
+          image: ${{ needs.build.outputs.image }}
           region: europe-west1
           env_vars: |
             DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
