@@ -7,6 +7,20 @@ on:
     branches: [main]
 
 jobs:
+  check-secrets:
+    name: Check GCP Secrets
+    runs-on: ubuntu-latest
+    outputs:
+      has-gcp: ${{ steps.check.outputs.has-gcp }}
+    steps:
+      - id: check
+        run: |
+          if [ "${{ secrets.WIF_PROVIDER }}" != "" ]; then
+            echo "has-gcp=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-gcp=false" >> "$GITHUB_OUTPUT"
+          fi
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -30,7 +44,8 @@ jobs:
   build:
     name: Build Image
     runs-on: ubuntu-latest
-    if: ${{ secrets.WIF_PROVIDER != '' }}
+    needs: check-secrets
+    if: needs.check-secrets.outputs.has-gcp == 'true'
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -69,8 +84,8 @@ jobs:
   integration-tests:
     name: Integration Smoke Tests
     runs-on: ubuntu-latest
-    needs: build
-    if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    needs: [check-secrets, build]
+    if: always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.check-secrets.result == 'success'))
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -89,14 +104,14 @@ jobs:
           df -h /
 
       - name: Authenticate to Google Cloud
-        if: secrets.WIF_PROVIDER != ''
+        if: needs.check-secrets.outputs.has-gcp == 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Configure Docker for Artifact Registry
-        if: secrets.WIF_PROVIDER != ''
+        if: needs.check-secrets.outputs.has-gcp == 'true'
         run: gcloud auth configure-docker europe-west1-docker.pkg.dev
 
       - name: Pull or Build image
@@ -146,8 +161,8 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [unit-tests, integration-tests, build]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [unit-tests, integration-tests, build, check-secrets]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check-secrets.outputs.has-gcp == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
