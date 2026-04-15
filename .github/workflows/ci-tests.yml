@@ -31,8 +31,6 @@ jobs:
     name: Build Image
     runs-on: ubuntu-latest
     if: ${{ secrets.WIF_PROVIDER != '' }}
-    env:
-      IMAGE_TAG: europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -41,6 +39,9 @@ jobs:
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v6
+
+      - name: Compute image tag
+        run: echo "IMAGE_TAG=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}" >> "$GITHUB_ENV"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -70,13 +71,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
-    env:
-      IMAGE_TAG: europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}
     permissions:
       contents: 'read'
       id-token: 'write'
     steps:
       - uses: actions/checkout@v6
+
+      - name: Compute image tag
+        run: |
+          PROJECT_ID="${{ secrets.GCP_PROJECT_ID || 'missing-project' }}"
+          echo "IMAGE_TAG=europe-west1-docker.pkg.dev/$PROJECT_ID/pillchecker-repo/api:${{ github.sha }}" >> "$GITHUB_ENV"
 
       - name: Free disk space
         run: |
@@ -145,8 +149,6 @@ jobs:
     needs: [unit-tests, integration-tests, build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    env:
-      IMAGE_TAG: europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -155,6 +157,9 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
+
+      - name: Compute image tag
+        run: echo "IMAGE_TAG=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}" >> "$GITHUB_ENV"
 
       - name: Authenticate to Google Cloud
         id: auth
