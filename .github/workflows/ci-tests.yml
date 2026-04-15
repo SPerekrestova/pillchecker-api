@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  IMAGE_TAG: europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}
+
 jobs:
   unit-tests:
     name: Unit Tests
@@ -27,10 +30,48 @@ jobs:
       - name: Run tests
         run: uv run pytest tests/ --ignore=tests/test_rxnorm_client.py -v
 
+  build:
+    name: Build Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_TAG }}
+          build-args: |
+            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   integration-tests:
     name: Integration Smoke Tests
     runs-on: ubuntu-latest
-    needs: unit-tests
+    needs: build
+    permissions:
+      contents: 'read'
+      id-token: 'write'
     steps:
       - uses: actions/checkout@v6
 
@@ -40,10 +81,19 @@ jobs:
           sudo apt-get clean
           df -h /
 
-      - name: Build and tag Docker images
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev
+
+      - name: Pull pre-built image
         run: |
-          docker compose build api
-          docker tag pillchecker-api-api pillchecker-api:ci
+          docker pull ${{ env.IMAGE_TAG }}
+          docker tag ${{ env.IMAGE_TAG }} pillchecker-api:ci
 
       - name: Start API
         run: >
@@ -79,7 +129,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: integration-tests
+    needs: [unit-tests, integration-tests, build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -101,23 +151,11 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for Artifact Registry
-        run: |
-          gcloud auth configure-docker europe-west1-docker.pkg.dev
-
-      - name: Build and Push Container
-        run: |
-          IMAGE_NAME="europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}"
-          docker build \
-            --build-arg DRUGBANK_DB_REPO="${{ secrets.DRUGBANK_DB_REPO }}" \
-            -t $IMAGE_NAME .
-          docker push $IMAGE_NAME
-
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: pillchecker-api
-          image: europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:${{ github.sha }}
+          image: ${{ env.IMAGE_TAG }}
           region: europe-west1
           env_vars: |
             DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
