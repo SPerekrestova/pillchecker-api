@@ -34,9 +34,14 @@ WORKDIR /app
 # Copy Node.js binary (needed at runtime to run the MCP server)
 COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node
 
-# Copy built drugbank-mcp-server (includes node_modules with native addons, DB, and build/)
-COPY --from=node-builder /app/drugbank-mcp-server /app/drugbank-mcp-server
+# Copy built drugbank-mcp-server (only runtime files: node_modules, DB, and build/)
+WORKDIR /app/drugbank-mcp-server
+COPY --from=node-builder /app/drugbank-mcp-server/node_modules ./node_modules
+COPY --from=node-builder /app/drugbank-mcp-server/build ./build
+COPY --from=node-builder /app/drugbank-mcp-server/data ./data
+COPY --from=node-builder /app/drugbank-mcp-server/package.json ./package.json
 
+WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 
 ENV PATH="/app/.venv/bin:$PATH"
