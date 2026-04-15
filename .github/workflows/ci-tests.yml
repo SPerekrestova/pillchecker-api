@@ -58,8 +58,9 @@ jobs:
       - name: Compute image tag
         run: |
           TAG="europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api"
+          CLEAN_REF=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
           echo "IMAGE_TAG=$TAG:${{ github.sha }}" >> "$GITHUB_ENV"
-          echo "CACHE_TAG=$TAG:cache-${{ github.ref_name }}" >> "$GITHUB_ENV"
+          echo "CACHE_TAG=$TAG:cache-$CLEAN_REF" >> "$GITHUB_ENV"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
