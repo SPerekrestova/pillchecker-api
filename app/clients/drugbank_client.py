@@ -1,28 +1,14 @@
-"""Async client for DrugBank MCP server.
+"""Client for DrugBank database.
 
-Spawns drugbank-mcp-server as a stdio child process and queries
-drug interaction data from a pre-built DrugBank SQLite database.
+Refactored to use direct SQLite access via app/clients/drugbank_db.py,
+eliminating the need for the Node.js MCP server child process.
 """
 
-import json
 import logging
-import os
 import time
-from contextlib import AbstractAsyncContextManager
-
-from mcp import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
+from app.clients.drugbank_db import db
 
 logger = logging.getLogger(__name__)
-
-DRUGBANK_SERVER_CMD = os.environ.get("DRUGBANK_SERVER_CMD", "node")
-DRUGBANK_SERVER_ARGS = os.environ.get(
-    "DRUGBANK_SERVER_ARGS",
-    os.path.join(os.path.dirname(__file__), "..", "..", "drugbank-mcp-server", "build", "index.js"),
-)
-
-_session: ClientSession | None = None
-_streams: AbstractAsyncContextManager | None = None
 
 # Simple TTL cache: {key: (value, expiry_timestamp)}
 _cache: dict[str, tuple[object, float]] = {}
@@ -31,7 +17,7 @@ _CACHE_MISS = object()  # sentinel to distinguish cache miss from cached None
 
 
 class DrugBankUnavailableError(Exception):
-    """Raised when the DrugBank MCP server is unreachable or returns an error."""
+    """Raised when the DrugBank database is unreachable or returns an error."""
 
 
 def _cache_get(key: str) -> object:
@@ -49,97 +35,45 @@ def _cache_set(key: str, value: object) -> None:
 
 
 async def connect() -> None:
-    """Spawn the DrugBank MCP server and establish a stdio session.
-
-    Silently degrades to _session=None on failure (graceful degradation).
-    """
-    global _session, _streams
+    """Connect to the DrugBank SQLite database."""
     try:
-        server_params = StdioServerParameters(
-            command=DRUGBANK_SERVER_CMD,
-            args=[DRUGBANK_SERVER_ARGS],
-        )
-        _streams = stdio_client(server_params)
-        read_stream, write_stream = await _streams.__aenter__()
-        try:
-            _session = ClientSession(read_stream, write_stream)
-            await _session.__aenter__()
-            await _session.initialize()
-            tools = await _session.list_tools()
-            names = {t.name for t in tools.tools}
-            if "drugbank_info" not in names:
-                logger.warning("DrugBank MCP server tools: %s — expected 'drugbank_info'", names)
-            logger.info("Connected to DrugBank MCP server (tools=%s)", names)
-        except Exception:
-            await _streams.__aexit__(None, None, None)
-            raise
-    except Exception:
-        logger.warning("Failed to connect to DrugBank MCP server", exc_info=True)
-        _session = None
-        _streams = None
+        await db.connect()
+    except Exception as e:
+        logger.warning("Failed to connect to DrugBank SQLite database: %s", e)
 
 
 async def close() -> None:
-    """Close the MCP session and kill the child process."""
-    global _session, _streams
-    try:
-        if _session is not None:
-            try:
-                await _session.__aexit__(None, None, None)
-            except Exception:
-                pass
-            _session = None
-    finally:
-        if _streams is not None:
-            try:
-                await _streams.__aexit__(None, None, None)
-            except Exception:
-                pass
-            _streams = None
+    """Close the database connection."""
+    await db.close()
 
 
 async def health_check() -> bool:
-    """Check if the MCP session is alive by calling list_tools."""
-    if _session is None:
-        return False
-    try:
-        await _session.list_tools()
-        return True
-    except Exception:
-        return False
+    """Check if the database connection is alive."""
+    # A simple way to check is to try a dummy query or check connection status
+    if db._conn is None:
+        try:
+            await db.connect()
+            return True
+        except Exception:
+            return False
+    return True
 
 
 async def _resolve_drugbank_id(drug_name: str) -> str | None:
     """Resolve a drug name to a DrugBank ID via search_by_name.
 
     Returns the drugbank_id of the first result, or None if not found.
-    Raises DrugBankUnavailableError if the session is down.
     """
     cache_key = f"dbid:{drug_name.lower()}"
     cached = _cache_get(cache_key)
     if cached is not _CACHE_MISS:
         return cached
 
-    if _session is None:
-        raise DrugBankUnavailableError("DrugBank MCP session not established")
-
     try:
-        result = await _session.call_tool(
-            "drugbank_info",
-            {"method": "search_by_name", "query": drug_name, "limit": 1},
-        )
-    except Exception as exc:
-        raise DrugBankUnavailableError(f"DrugBank call failed: {exc}") from exc
-
-    if result.isError:
-        raise DrugBankUnavailableError(f"DrugBank returned error for {drug_name}")
-
-    try:
-        data = json.loads(result.content[0].text)
-        results = data.get("results", [])
+        results = await db.search_by_name(drug_name, limit=1)
         drugbank_id = results[0]["drugbank_id"] if results else None
-    except (json.JSONDecodeError, IndexError, KeyError):
-        logger.warning("Failed to parse search_by_name response for %s", drug_name)
+    except Exception as exc:
+        logger.error("DrugBank resolution failed for %s: %s", drug_name, exc)
         drugbank_id = None
 
     _cache_set(cache_key, drugbank_id)
@@ -149,8 +83,7 @@ async def _resolve_drugbank_id(drug_name: str) -> str | None:
 async def get_interactions(drug_name: str) -> list[dict]:
     """Get drug-drug interactions for a given drug name.
 
-    Returns list of {"drug": str, "description": str | None}.
-    Raises DrugBankUnavailableError if the server is unreachable.
+    Returns list of {"drug": str, "description": str | None, "severity": str | None}.
     """
     cache_key = f"interactions:{drug_name.lower()}"
     cached = _cache_get(cache_key)
@@ -165,24 +98,9 @@ async def get_interactions(drug_name: str) -> list[dict]:
         return []
 
     # Step 2: fetch interactions
-    if _session is None:
-        raise DrugBankUnavailableError("DrugBank MCP session not established")
-
     try:
-        result = await _session.call_tool(
-            "drugbank_info",
-            {"method": "get_drug_interactions", "drugbank_id": drugbank_id},
-        )
-    except Exception as exc:
-        raise DrugBankUnavailableError(f"DrugBank call failed: {exc}") from exc
-
-    if result.isError:
-        raise DrugBankUnavailableError(f"DrugBank returned error for {drugbank_id}")
-
-    try:
-        data = json.loads(result.content[0].text)
-        raw_interactions = data.get("interactions", [])
-        # Map to same format as biomcp_client: {drug, description}
+        raw_interactions = await db.get_drug_interactions(drugbank_id)
+        # Map to format expected by interaction_checker.py: {drug, description, severity}
         interactions = [
             {
                 "drug": entry.get("name", ""),
@@ -191,8 +109,8 @@ async def get_interactions(drug_name: str) -> list[dict]:
             }
             for entry in raw_interactions
         ]
-    except (json.JSONDecodeError, IndexError):
-        logger.warning("Failed to parse interactions response for %s", drug_name)
+    except Exception as exc:
+        logger.error("Failed to fetch interactions for %s: %s", drugbank_id, exc)
         interactions = []
 
     _cache_set(cache_key, interactions)
