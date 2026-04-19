@@ -22,7 +22,7 @@ WORKDIR /app/drugbank-mcp-server/data
 ARG DRUGBANK_DB_REPO=openpharma-org/drugbank-mcp-server
 ARG DRUGBANK_DB_TAG=db-2026-04-01
 RUN apt-get update && apt-get install -y curl && \
-    curl -L -o drugbank.db "https://github.com/${DRUGBANK_DB_REPO}/releases/download/${DRUGBANK_DB_TAG}/drugbank.db" && \
+    curl -fL -o drugbank.db "https://github.com/${DRUGBANK_DB_REPO}/releases/download/${DRUGBANK_DB_TAG}/drugbank.db" && \
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # --- Runtime stage ---

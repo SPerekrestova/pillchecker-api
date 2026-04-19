@@ -69,7 +69,9 @@ class DrugBankDatabase:
         """Verify the database connection is actually usable.
 
         Runs a lightweight `SELECT 1` to ensure the underlying file is still
-        readable and the connection has not been broken.
+        readable and the connection has not been broken. If the probe fails
+        the cached connection is discarded so the next query can re-establish
+        it rather than reusing a dead handle.
         """
         try:
             if self._conn is None:
@@ -80,6 +82,13 @@ class DrugBankDatabase:
             return True
         except Exception as exc:
             logger.warning("DrugBank health check failed: %s", exc)
+            # Drop the broken handle so subsequent calls reconnect.
+            if self._conn is not None:
+                try:
+                    await self._conn.close()
+                except Exception:
+                    pass
+                self._conn = None
             return False
 
     async def search_by_name(self, query: str, limit: int = 1) -> list[dict[str, Any]]:

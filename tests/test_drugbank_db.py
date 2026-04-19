@@ -172,6 +172,17 @@ class TestHealthCheck:
         await db._conn.close()
         assert await db.health_check() is False
 
+    async def test_failed_health_check_resets_connection(self, db):
+        """A broken connection must be dropped so the next call can reconnect."""
+        await db.connect()
+        await db._conn.close()
+        assert await db.health_check() is False
+        # _conn should be reset so subsequent queries re-establish it.
+        assert db._conn is None
+        # After reset the next query reconnects and succeeds.
+        rows = await db.search_by_name("Ibuprofen")
+        assert len(rows) == 1
+
 
 class TestFTS5Escape:
     def test_wraps_in_quotes(self):
