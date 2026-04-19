@@ -12,37 +12,29 @@ RUN uv sync --no-install-project --no-dev
 COPY app/ app/
 RUN uv sync --no-dev
 
-# --- Node.js build stage ---
-FROM node:20-bookworm AS node-builder
+# --- DB downloader stage ---
+FROM python:3.12-slim AS db-downloader
 
-WORKDIR /app/drugbank-mcp-server
+WORKDIR /app/drugbank-mcp-server/data
 
-COPY drugbank-mcp-server/package.json drugbank-mcp-server/package-lock.json ./
-RUN npm ci
-
-COPY drugbank-mcp-server/scripts/ scripts/
-COPY drugbank-mcp-server/src/ src/
-ARG DRUGBANK_DB_REPO
-ENV DRUGBANK_DB_REPO=${DRUGBANK_DB_REPO}
-RUN npm run download:db && npm run build:code
+# Use curl to download a pinned version of the pre-built SQLite DB.
+# Pinning the tag ensures deterministic builds and allows Docker to cache this layer reliably.
+ARG DRUGBANK_DB_REPO=openpharma-org/drugbank-mcp-server
+ARG DRUGBANK_DB_TAG=db-2026-04-01
+RUN apt-get update && apt-get install -y curl && \
+    curl -fL -o drugbank.db "https://github.com/${DRUGBANK_DB_REPO}/releases/download/${DRUGBANK_DB_TAG}/drugbank.db" && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # --- Runtime stage ---
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copy Node.js binary (needed at runtime to run the MCP server)
-COPY --from=node:20-slim /usr/local/bin/node /usr/local/bin/node
-
-# Copy built drugbank-mcp-server (only runtime files: node_modules, DB, and build/)
-WORKDIR /app/drugbank-mcp-server
-COPY --from=node-builder /app/drugbank-mcp-server/node_modules ./node_modules
-COPY --from=node-builder /app/drugbank-mcp-server/build ./build
-COPY --from=node-builder /app/drugbank-mcp-server/data ./data
-COPY --from=node-builder /app/drugbank-mcp-server/package.json ./package.json
-
-WORKDIR /app
+# Copy built virtualenv from builder
 COPY --from=builder /app/.venv /app/.venv
+
+# Copy DrugBank SQLite DB from downloader stage
+COPY --from=db-downloader /app/drugbank-mcp-server/data /app/drugbank-mcp-server/data
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV HF_HOME=/app/models
@@ -60,6 +52,12 @@ COPY --from=builder /app/app /app/app
 COPY scripts/ /app/scripts/
 
 RUN chmod +x /app/scripts/prod-startup.sh /app/scripts/ci-startup.sh
+
+# Create a non-root user for security
+RUN groupadd -r pillchecker && useradd -r -g pillchecker pillchecker && \
+    chown -R pillchecker:pillchecker /app
+
+USER pillchecker
 
 EXPOSE 8000
 
