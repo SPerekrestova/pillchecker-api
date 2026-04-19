@@ -48,34 +48,32 @@ async def close() -> None:
 
 
 async def health_check() -> bool:
-    """Check if the database connection is alive."""
-    # A simple way to check is to try a dummy query or check connection status
-    if db._conn is None:
-        try:
-            await db.connect()
-            return True
-        except Exception:
-            return False
-    return True
+    """Check if the database connection is alive and functional."""
+    return await db.health_check()
 
 
 async def _resolve_drugbank_id(drug_name: str) -> str | None:
     """Resolve a drug name to a DrugBank ID via search_by_name.
 
-    Returns the drugbank_id of the first result, or None if not found.
+    Returns the drugbank_id of the first result, or None if the drug is
+    genuinely not present in DrugBank. Raises DrugBankUnavailableError if
+    the database call fails so transient failures are not cached as
+    "not found".
     """
     cache_key = f"dbid:{drug_name.lower()}"
     cached = _cache_get(cache_key)
     if cached is not _CACHE_MISS:
-        return cached
+        return cached  # type: ignore[return-value]
 
     try:
         results = await db.search_by_name(drug_name, limit=1)
-        drugbank_id = results[0]["drugbank_id"] if results else None
     except Exception as exc:
         logger.error("DrugBank resolution failed for %s: %s", drug_name, exc)
-        drugbank_id = None
+        raise DrugBankUnavailableError(
+            f"DrugBank call failed for {drug_name}: {exc}"
+        ) from exc
 
+    drugbank_id = results[0]["drugbank_id"] if results else None
     _cache_set(cache_key, drugbank_id)
     return drugbank_id
 
@@ -84,13 +82,16 @@ async def get_interactions(drug_name: str) -> list[dict]:
     """Get drug-drug interactions for a given drug name.
 
     Returns list of {"drug": str, "description": str | None, "severity": str | None}.
+    Raises DrugBankUnavailableError if the underlying database is
+    unreachable so callers can distinguish transient outages from drugs
+    that genuinely have no recorded interactions.
     """
     cache_key = f"interactions:{drug_name.lower()}"
     cached = _cache_get(cache_key)
     if cached is not _CACHE_MISS:
-        return cached
+        return cached  # type: ignore[return-value]
 
-    # Step 1: resolve name → drugbank_id
+    # Step 1: resolve name → drugbank_id (may raise DrugBankUnavailableError)
     drugbank_id = await _resolve_drugbank_id(drug_name)
     if drugbank_id is None:
         logger.info("Drug not found in DrugBank: %s", drug_name)
@@ -100,18 +101,20 @@ async def get_interactions(drug_name: str) -> list[dict]:
     # Step 2: fetch interactions
     try:
         raw_interactions = await db.get_drug_interactions(drugbank_id)
-        # Map to format expected by interaction_checker.py: {drug, description, severity}
-        interactions = [
-            {
-                "drug": entry.get("name", ""),
-                "description": entry.get("description"),
-                "severity": entry.get("severity"),
-            }
-            for entry in raw_interactions
-        ]
     except Exception as exc:
         logger.error("Failed to fetch interactions for %s: %s", drugbank_id, exc)
-        interactions = []
+        raise DrugBankUnavailableError(
+            f"DrugBank interaction lookup failed for {drug_name}: {exc}"
+        ) from exc
 
+    # Map to format expected by interaction_checker.py: {drug, description, severity}
+    interactions = [
+        {
+            "drug": entry.get("name", ""),
+            "description": entry.get("description"),
+            "severity": entry.get("severity"),
+        }
+        for entry in raw_interactions
+    ]
     _cache_set(cache_key, interactions)
     return interactions

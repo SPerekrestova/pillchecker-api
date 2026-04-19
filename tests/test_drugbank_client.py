@@ -2,7 +2,7 @@
 
 import time
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from app.clients import drugbank_client
 
 
@@ -119,13 +119,74 @@ class TestConnect:
 
 
 class TestHealthCheck:
-    async def test_health_check_success(self):
-        with patch("app.clients.drugbank_client.db") as mock_db:
-            mock_db._conn = MagicMock()
-            assert await drugbank_client.health_check() is True
-
-    async def test_health_check_connects_if_none(self):
+    async def test_health_check_delegates_to_db(self):
         with patch("app.clients.drugbank_client.db", new_callable=AsyncMock) as mock_db:
-            mock_db._conn = None
+            mock_db.health_check.return_value = True
             assert await drugbank_client.health_check() is True
-            mock_db.connect.assert_called_once()
+            mock_db.health_check.assert_called_once()
+
+    async def test_health_check_returns_false_when_db_unhealthy(self):
+        with patch("app.clients.drugbank_client.db", new_callable=AsyncMock) as mock_db:
+            mock_db.health_check.return_value = False
+            assert await drugbank_client.health_check() is False
+
+
+class TestErrorPropagation:
+    """Database errors must propagate so transient failures are not cached."""
+
+    @pytest.fixture(autouse=True)
+    def reset_cache(self):
+        drugbank_client._cache.clear()
+        yield
+        drugbank_client._cache.clear()
+
+    @pytest.fixture
+    def mock_db(self):
+        with patch("app.clients.drugbank_client.db", new_callable=AsyncMock) as mock:
+            yield mock
+
+    async def test_resolve_raises_on_db_error(self, mock_db):
+        mock_db.search_by_name.side_effect = RuntimeError("disk I/O error")
+        with pytest.raises(drugbank_client.DrugBankUnavailableError):
+            await drugbank_client._resolve_drugbank_id("ibuprofen")
+
+    async def test_resolve_does_not_cache_db_error(self, mock_db):
+        """A transient DB error must not be cached as 'not found'."""
+        mock_db.search_by_name.side_effect = [
+            RuntimeError("disk I/O error"),
+            [{"drugbank_id": "DB01050", "name": "Ibuprofen"}],
+        ]
+        with pytest.raises(drugbank_client.DrugBankUnavailableError):
+            await drugbank_client._resolve_drugbank_id("ibuprofen")
+        # Next call after DB recovers must hit the DB again and succeed
+        result = await drugbank_client._resolve_drugbank_id("ibuprofen")
+        assert result == "DB01050"
+        assert mock_db.search_by_name.call_count == 2
+
+    async def test_get_interactions_raises_on_resolve_error(self, mock_db):
+        mock_db.search_by_name.side_effect = RuntimeError("disk I/O error")
+        with pytest.raises(drugbank_client.DrugBankUnavailableError):
+            await drugbank_client.get_interactions("ibuprofen")
+
+    async def test_get_interactions_raises_on_lookup_error(self, mock_db):
+        mock_db.search_by_name.return_value = [
+            {"drugbank_id": "DB01050", "name": "Ibuprofen"}
+        ]
+        mock_db.get_drug_interactions.side_effect = RuntimeError("disk I/O error")
+        with pytest.raises(drugbank_client.DrugBankUnavailableError):
+            await drugbank_client.get_interactions("ibuprofen")
+
+    async def test_get_interactions_does_not_cache_db_error(self, mock_db):
+        mock_db.search_by_name.return_value = [
+            {"drugbank_id": "DB01050", "name": "Ibuprofen"}
+        ]
+        mock_db.get_drug_interactions.side_effect = [
+            RuntimeError("disk I/O error"),
+            [{"name": "Warfarin", "description": "x", "severity": "major"}],
+        ]
+        with pytest.raises(drugbank_client.DrugBankUnavailableError):
+            await drugbank_client.get_interactions("ibuprofen")
+        # After recovery, the next call must hit the DB again and succeed
+        result = await drugbank_client.get_interactions("ibuprofen")
+        assert len(result) == 1
+        assert result[0]["drug"] == "Warfarin"
