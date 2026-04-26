@@ -1,3 +1,12 @@
 drugbank-mcp-server/node_modules/
 drugbank-mcp-server/data/
 drugbank-mcp-server/build/
+models/
+.venv/
+__pycache__/
+*.pyc
+.git/
+.github/
+.pytest_cache/
+eval/
+tests/
