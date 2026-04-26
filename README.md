@@ -57,29 +57,30 @@ The image uses a three-stage build to keep layers small and reproducible:
 
 ## Eval Benchmark
 
-The `eval/` directory contains a benchmark suite that measures NER accuracy on synthesized pharmaceutical pack-label text. See [`eval/BENCHMARK.md`](eval/BENCHMARK.md) for methodology and results.
+The benchmark suite and raw results have been migrated to the Hugging Face Hub for better reproducibility and visualization.
 
-**Dataset**: 11,796 cases generated from the [MattBastar/Medicine_Details](https://huggingface.co/datasets/MattBastar/Medicine_Details) HuggingFace dataset, with configurable OCR noise levels (clean, light, heavy).
+*   **Benchmark Dataset:** [SPerva/pillchecker-ner-benchmark](https://huggingface.co/datasets/SPerva/pillchecker-ner-benchmark)
+*   **Result History:** [hf://buckets/SPerva/pillchecker-experiments](https://huggingface.co/buckets/SPerva/pillchecker-experiments)
+*   **Methodology:** See the dataset card on Hugging Face for details on the 11,796 synthesized cases.
 
-| Pipeline / Noise Level | Precision | Recall | F1 |
+| Pipeline (Clean Text) | Precision | Recall | F1 |
 |------------------------|-----------|--------|----|
-| Bare NER (Clean) | 46.9% | 84.4% | 60.3% |
-| Bare NER (Light Noise) | 44.9% | 79.8% | 57.5% |
-| Bare NER (Heavy Noise) | 26.2% | 53.5% | 35.2% |
-| **Full Pipeline (Clean)** | **71.6%** | **81.0%** | **76.0%** |
-| **Full Pipeline (Light Noise)** | **74.4%** | **79.8%** | **77.0%** |
-| **Full Pipeline (Heavy Noise)** | **65.6%** | **47.6%** | **55.2%** |
+| Bare NER Baseline | 46.9% | 84.4% | 60.3% |
+| Full Pipeline | 71.6% | 81.0% | 76.0% |
+| **GLiNER Union (Best)** | **78.0%** | **93.6%** | **85.1%** |
 
-```bash
-uv run python eval/prepare_hf_dataset.py           # generate dataset
-uv run python eval/benchmark.py --limit 500         # run benchmark
-```
+## Staging & Deployment
 
-## Acknowledgments
+The API is deployed as a staging environment on Hugging Face Spaces for remote testing:
 
+*   **Staging Space:** [sperva-pillchecker-staging](https://huggingface.co/spaces/SPerva/pillchecker-staging)
+*   **API Docs:** [sperva-pillchecker-staging.hf.space/docs](https://sperva-pillchecker-staging.hf.space/docs)
+
+
+- **[PillChecker Collection](https://huggingface.co/collections/SPerva/pillchecker-69ee0f67dee76ff7ae9ea30a)** -- Central hub for all models and datasets used in this project.
 - **[OpenMed NER PharmaDetect](https://huggingface.co/OpenMed/OpenMed-NER-PharmaDetect-BioPatient-108M)** -- drug entity recognition model (108M params). License: Apache 2.0
 - **[RxNorm REST API](https://lhncbc.nlm.nih.gov/RxNav/APIs/RxNormAPIs.html)** -- drug name normalization and RxCUI mapping. Provided by NLM (free to use).
 - **[DrugBank](https://www.drugbank.com/)** -- pharmaceutical database providing structured drug-drug interaction data. Accessed via the [openpharma-org/drugbank-mcp-server](https://github.com/openpharma-org/drugbank-mcp-server) open-source MCP server.
 - **[DeBERTa-v3-base-mnli-fever-anli](https://huggingface.co/MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli)** -- zero-shot classifier for interaction severity. License: MIT
 - **[Hugging Face Transformers](https://huggingface.co/docs/transformers)** -- NLP pipeline library. License: Apache 2.0
-- **[MattBastar/Medicine_Details](https://huggingface.co/datasets/MattBastar/Medicine_Details)** -- benchmark dataset (11.8K medicines with compositions).
+
