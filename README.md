@@ -1,3 +1,14 @@
+---
+title: PillChecker Staging
+emoji: 📚
+colorFrom: green
+colorTo: indigo
+sdk: docker
+pinned: true
+app_port: 8000
+license: mit
+---
+
 # PillChecker API
 
 PillChecker helps users find out if two medications are safe to take at the same time. This repository contains the backend API that identifies drugs from OCR text and checks for dangerous interactions using DrugBank pharmaceutical data.
