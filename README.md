@@ -2,7 +2,7 @@
 
 PillChecker helps users find out if two medications are safe to take at the same time. This repository contains the backend API that identifies drugs from OCR text and checks for dangerous interactions using DrugBank pharmaceutical data.
 
-[![DOI](https://zenodo.org/badge/1151753226.svg)](https://doi.org/10.5281/zenodo.19792061)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19792062.svg)](https://doi.org/10.5281/zenodo.19792062)
 
 > **MEDICAL DISCLAIMER**
 >
@@ -85,4 +85,22 @@ The API is deployed as a staging environment on Hugging Face Spaces for remote t
 - **[DrugBank](https://www.drugbank.com/)** -- pharmaceutical database providing structured drug-drug interaction data. Accessed via the [openpharma-org/drugbank-mcp-server](https://github.com/openpharma-org/drugbank-mcp-server) open-source MCP server.
 - **[DeBERTa-v3-base-mnli-fever-anli](https://huggingface.co/MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli)** -- zero-shot classifier for interaction severity. License: MIT
 - **[Hugging Face Transformers](https://huggingface.co/docs/transformers)** -- NLP pipeline library. License: Apache 2.0
+
+## Citation
+
+If you use this software or the benchmark dataset in your research, please cite it as:
+
+```bibtex
+@software{perekrestova_pillchecker_2026,
+  author = {Perekrestova, Svetlana},
+  orcid = {0009-0003-2905-6040},
+  title = {PillChecker API: Pharmaceutical Entity Extraction and Interaction Checker},
+  version = {1.2.2},
+  doi = {10.5281/zenodo.19792062},
+  url = {https://github.com/SPerekrestova/pillchecker-api},
+  date = {2026-04-26},
+  publisher = {Zenodo},
+  note = {GitHub Repository}
+}
+```
 
