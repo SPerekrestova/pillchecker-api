@@ -2,6 +2,8 @@
 
 PillChecker helps users find out if two medications are safe to take at the same time. This repository contains the backend API that identifies drugs from OCR text and checks for dangerous interactions using DrugBank pharmaceutical data.
 
+[![DOI](https://zenodo.org/badge/1151753226.svg)](https://doi.org/10.5281/zenodo.19792061)
+
 > **MEDICAL DISCLAIMER**
 >
 > This service is provided for **informational and self-educational purposes only**. While the application utilizes data from respected pharmaceutical sources, the information provided should **not** be treated as medical advice, diagnosis, or treatment.
