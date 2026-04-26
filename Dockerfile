@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:0.9-python3.12-bookworm-slim AS builder
 
-WORKDIR /app
+WORKDIR /home/user/app
 
 # Copy dependency files first for layer caching
 COPY pyproject.toml uv.lock .python-version ./
@@ -15,10 +15,9 @@ RUN uv sync --no-dev
 # --- DB downloader stage ---
 FROM python:3.12-slim AS db-downloader
 
-WORKDIR /app/drugbank-mcp-server/data
+WORKDIR /home/user/app/drugbank-mcp-server/data
 
 # Use curl to download a pinned version of the pre-built SQLite DB.
-# Pinning the tag ensures deterministic builds and allows Docker to cache this layer reliably.
 ARG DRUGBANK_DB_REPO=openpharma-org/drugbank-mcp-server
 ARG DRUGBANK_DB_TAG=db-2026-04-01
 RUN apt-get update && apt-get install -y curl && \
@@ -28,38 +27,38 @@ RUN apt-get update && apt-get install -y curl && \
 # --- Runtime stage ---
 FROM python:3.12-slim
 
-WORKDIR /app
+# Set up a new user named "user" with UID 1000 (standard for HF Spaces)
+RUN useradd -m -u 1000 user
+ENV HOME=/home/user \
+    PATH=/home/user/app/.venv/bin:/home/user/.local/bin:$PATH
+
+WORKDIR /home/user/app
 
 # Copy built virtualenv from builder
-COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /home/user/app/.venv /home/user/app/.venv
 
 # Copy DrugBank SQLite DB from downloader stage
-COPY --from=db-downloader /app/drugbank-mcp-server/data /app/drugbank-mcp-server/data
+COPY --from=db-downloader /home/user/app/drugbank-mcp-server/data /home/user/app/drugbank-mcp-server/data
 
-ENV PATH="/app/.venv/bin:$PATH"
-ENV HF_HOME=/app/models
-ENV TRANSFORMERS_CACHE=/app/models
+# Ensure paths are correct for the app
+ENV HF_HOME=/home/user/app/models
+ENV TRANSFORMERS_CACHE=/home/user/app/models
 
 # Pre-download NER model so the image is self-contained.
-# Layer is cached until venv or model ID changes.
-# In local dev, docker-compose mounts a volume over /app/models.
 RUN python -c "from transformers import pipeline; \
     pipeline('ner', model='OpenMed/OpenMed-NER-PharmaDetect-BioPatient-108M', aggregation_strategy='none'); \
     pipeline('zero-shot-classification', model='MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli')"
 
-# App code comes last — most frequently changing layer
-COPY --from=builder /app/app /app/app
-COPY scripts/ /app/scripts/
+# App code comes last
+COPY --from=builder /home/user/app/app /home/user/app/app
+COPY scripts/ /home/user/app/scripts/
 
-RUN chmod +x /app/scripts/prod-startup.sh /app/scripts/ci-startup.sh
+RUN chmod +x /home/user/app/scripts/prod-startup.sh /home/user/app/scripts/ci-startup.sh
+RUN chown -R user:user /home/user/app
 
-# Create a non-root user for security
-RUN groupadd -r pillchecker && useradd -r -g pillchecker pillchecker && \
-    chown -R pillchecker:pillchecker /app
+USER user
 
-USER pillchecker
+EXPOSE 7860
 
-EXPOSE 8000
-
-ENTRYPOINT ["/app/scripts/prod-startup.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/home/user/app/scripts/prod-startup.sh"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
