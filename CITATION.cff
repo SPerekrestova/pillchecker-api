@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Perekrestova"
+  given-names: "Svetlana"
+  orcid: "https://orcid.org/0009-0003-2905-6040"
+title: "PillChecker API: A Multi-Agent System for Pharmaceutical Entity Extraction and Interaction Checking"
+version: 1.2.2
+doi: 10.5281/zenodo.19792062
+date-released: 2026-04-26
+url: "https://github.com/SPerekrestova/pillchecker-api"
+keywords:
+  - pharmaceutical-ner
+  - drug-interactions
+  - ocr-correction
+  - nlp
+  - benchmarking
+license: MIT

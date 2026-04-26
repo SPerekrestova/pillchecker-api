@@ -1,0 +1,20 @@
+{
+    "description": "PillChecker is an open-source API and benchmarking suite for identifying pharmaceutical ingredients from OCR text and checking for potential drug-drug interactions. It features a multi-agent NER pipeline using PharmaDetect and GLiNER, and validates results against RxNorm and DrugBank.",
+    "creators": [
+        {
+            "name": "Perekrestova, Svetlana",
+            "affiliation": "Independent Researcher"
+        }
+    ],
+    "keywords": [
+        "pharmaceutical-ner",
+        "drug-interactions",
+        "nlp",
+        "ocr-cleaning",
+        "benchmarking",
+        "mcp"
+    ],
+    "license": "MIT",
+    "title": "PillChecker API: Pharmaceutical Entity Extraction and Interaction Checker",
+    "access_right": "open"
+}
