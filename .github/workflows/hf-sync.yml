@@ -1,7 +1,7 @@
 name: Sync to Hugging Face Hub
 on:
   push:
-    branches: [main, gliner-evaluation]
+    branches: [main, gliner-evaluation, feat/jobs]
   workflow_dispatch:
 
 jobs:
