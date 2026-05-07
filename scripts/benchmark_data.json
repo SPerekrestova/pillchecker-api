@@ -1,0 +1,68 @@
+[
+  {
+    "id": "case_001",
+    "category": "single_clean",
+    "ocr_text": "Amoxicillin 500mg capsule, Take 1 capsule by mouth 3 times a day",
+    "ocr_noise_level": "clean",
+    "expected_names": ["Amoxicillin"],
+    "expected_rxcuis": ["723"],
+    "expected_interactions": []
+  },
+  {
+    "id": "case_002",
+    "category": "single_noisy",
+    "ocr_text": "L!s!n0pr1l 10 mg tab1et PO QD",
+    "ocr_noise_level": "heavy",
+    "expected_names": ["Lisinopril"],
+    "expected_rxcuis": ["29046"],
+    "expected_interactions": []
+  },
+  {
+    "id": "case_003",
+    "category": "multi_safe",
+    "ocr_text": "Ibuprofen 400mg PRN pain, Acetaminophen 500mg every 6 hours",
+    "ocr_noise_level": "clean",
+    "expected_names": ["Ibuprofen", "Acetaminophen"],
+    "expected_rxcuis": ["5640", "161"],
+    "expected_interactions": []
+  },
+  {
+    "id": "case_004",
+    "category": "multi_dangerous",
+    "ocr_text": "Warfarin sodium 5mg daily. Ibuprofen 800mg as needed.",
+    "ocr_noise_level": "clean",
+    "expected_names": ["Warfarin", "Ibuprofen"],
+    "expected_rxcuis": ["11289", "5640"],
+    "expected_interactions": [
+      {
+        "pair": ["Warfarin", "Ibuprofen"],
+        "severity": "major",
+        "description": "The risk or severity of bleeding and hemorrhage can be increased when Ibuprofen is combined with Warfarin."
+      }
+    ]
+  },
+  {
+    "id": "case_005",
+    "category": "multi_dangerous_noisy",
+    "ocr_text": "R|t0navir 100 mg b1d, s1mva5tatin 40 mg qhs",
+    "ocr_noise_level": "heavy",
+    "expected_names": ["Ritonavir", "Simvastatin"],
+    "expected_rxcuis": ["83367", "36567"],
+    "expected_interactions": [
+      {
+        "pair": ["Ritonavir", "Simvastatin"],
+        "severity": "contraindicated",
+        "description": "The serum concentration of Simvastatin can be increased when it is combined with Ritonavir, raising the risk of rhabdomyolysis."
+      }
+    ]
+  },
+  {
+    "id": "case_006",
+    "category": "false_positive_prone",
+    "ocr_text": "Vitamin C Gummies manufactured by Pfizer Inc. Store at room temperature.",
+    "ocr_noise_level": "clean",
+    "expected_names": ["Vitamin C"],
+    "expected_rxcuis": ["1151"],
+    "expected_interactions": []
+  }
+]
