@@ -1,22 +1,27 @@
-name: Sync to Hugging Face Hub
+name: Sync to Hugging Face Space
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 jobs:
-  sync:
+  sync-space:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
-      - name: Sync to Space
-        uses: huggingface/hub-sync@v0.1.0
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
-          github_repo_id: ${{ github.repository }}
-          huggingface_repo_id: SPerva/pillchecker-staging
-          hf_token: ${{ secrets.HF_TOKEN }}
-          repo_type: space
-          space_sdk: docker
+          python-version: "3.12"
+
+      - name: Install Hugging Face client
+        run: python -m pip install "huggingface_hub>=1.0.0"
+
+      - name: Mirror deployable tree to Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python scripts/sync_hf_space.py
