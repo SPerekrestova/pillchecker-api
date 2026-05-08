@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SPerekrestova/pillchecker-api/eval/benchmark_record.schema.json",
+  "title": "PillChecker benchmark record",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["id", "category", "ocr_text", "expected_names", "source_composition"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["single_ingredient", "dual_ingredient", "multi_ingredient"]
+    },
+    "ocr_text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "clean_text": {
+      "type": "string",
+      "description": "Independent clean reference text for OCR-cleaner evaluation."
+    },
+    "expected_names": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "expected_rxcuis": {
+      "type": "array",
+      "description": "Gold RxNorm identifiers aligned to expected active ingredients.",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9]+$"
+      }
+    },
+    "expected_interactions": {
+      "type": "array",
+      "description": "Gold drug-drug interaction labels for interaction benchmarks.",
+      "items": {
+        "type": "object",
+        "required": ["drug_a", "drug_b", "interacts"],
+        "additionalProperties": true,
+        "properties": {
+          "drug_a": {"type": "string"},
+          "drug_b": {"type": "string"},
+          "rxcui_a": {"type": "string", "pattern": "^[0-9]+$"},
+          "rxcui_b": {"type": "string", "pattern": "^[0-9]+$"},
+          "interacts": {"type": "boolean"},
+          "severity": {"type": "string", "enum": ["minor", "moderate", "major", "unknown"]},
+          "source": {"type": "string"}
+        }
+      }
+    },
+    "ocr_noise_level": {
+      "type": "string",
+      "enum": ["none", "light", "heavy"]
+    },
+    "source_composition": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_dataset": {
+      "type": "string"
+    },
+    "source_row_id": {
+      "type": ["string", "integer"]
+    }
+  }
+}
