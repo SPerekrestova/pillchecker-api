@@ -63,7 +63,7 @@ The image uses a three-stage build to keep layers small and reproducible:
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/health` | No | Liveness check |
-| `GET` | `/health/data` | No | Readiness -- confirms DrugBank MCP connection |
+| `GET` | `/health/data` | No | Readiness -- confirms DrugBank SQLite connection |
 | `POST` | `/analyze` | API key | Extract drugs from OCR text |
 | `POST` | `/interactions` | API key | Check interactions for a list of drug names |
 | `POST` | `/admin/cache/clear` | API key | Clear all in-memory caches |
@@ -74,14 +74,14 @@ The benchmark suite and raw results have been migrated to the Hugging Face Hub f
 
 *   **Benchmark Dataset:** [SPerva/pillchecker-ner-benchmark](https://huggingface.co/datasets/SPerva/pillchecker-ner-benchmark)
 *   **Result History:** [hf://buckets/SPerva/pillchecker-experiments](https://huggingface.co/buckets/SPerva/pillchecker-experiments)
-*   **Methodology:** See the dataset card on Hugging Face for details on the 11,796 synthesized cases.
+*   **Methodology:** See the dataset card on Hugging Face for details on the current 500-case benchmark sample.
 
 | Pipeline (Clean Text) | Precision | Recall | F1 |
 |------------------------|-----------|--------|----|
 | Bare NER Baseline | 46.9% | 84.4% | 60.3% |
 | Full Pipeline | 71.6% | 81.0% | 76.0% |
 
-See [`eval/README.md`](eval/README.md) for the current benchmark plan, missing ground-truth fields, and Hugging Face asset cleanup rules.
+See [`AGENTS.md`](AGENTS.md) for HF/GitHub ownership rules and [`eval/README.md`](eval/README.md) for the current benchmark plan, missing ground-truth fields, and Hugging Face asset cleanup rules.
 
 ## Staging & Deployment
 

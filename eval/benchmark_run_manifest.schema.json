@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SPerekrestova/pillchecker-api/eval/benchmark_run_manifest.schema.json",
+  "title": "PillChecker benchmark run manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "run_id",
+    "timestamp_utc",
+    "git_commit",
+    "dataset_repo",
+    "dataset_revision",
+    "command",
+    "model_ids",
+    "metrics"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "dataset_repo": {
+      "type": "string",
+      "const": "SPerva/pillchecker-ner-benchmark"
+    },
+    "dataset_revision": {
+      "type": "string"
+    },
+    "dataset_path": {
+      "type": "string",
+      "default": "data/benchmark.json"
+    },
+    "bucket_output_prefix": {
+      "type": "string",
+      "pattern": "^benchmark-results/[0-9]{4}-[0-9]{2}-[0-9]{2}/.+/$"
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_ids": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["number", "string", "boolean"]
+      }
+    },
+    "sample_size": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "random_seed": {
+      "type": ["integer", "string", "null"]
+    },
+    "metrics": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": ["number", "string", "boolean", "object", "array", "null"]
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

@@ -12,6 +12,7 @@ DEFAULT_ALLOW_PATTERNS = [
     ".dockerignore",
     ".python-version",
     ".zenodo.json",
+    "AGENTS.md",
     "CITATION.cff",
     "Dockerfile",
     "LICENSE",
