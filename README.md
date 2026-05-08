@@ -81,7 +81,7 @@ The benchmark suite and raw results have been migrated to the Hugging Face Hub f
 | Bare NER Baseline | 46.9% | 84.4% | 60.3% |
 | Full Pipeline | 71.6% | 81.0% | 76.0% |
 
-See [`AGENTS.md`](AGENTS.md) for HF/GitHub ownership rules and [`eval/README.md`](eval/README.md) for the current benchmark plan, missing ground-truth fields, and Hugging Face asset cleanup rules.
+See [`eval/README.md`](eval/README.md) for evaluation methodology and progress, and [`AGENTS.md`](AGENTS.md) for HF/GitHub ownership and cleanup rules.
 
 ## Staging & Deployment
 

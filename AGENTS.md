@@ -67,8 +67,28 @@ These rules are authoritative for AI agents working in this repository.
 
 1. Safe cleanup candidates are duplicate result copies, zero-byte traces, stale Space-only files, and unversioned legacy files after moving them to a versioned legacy path.
 2. Before deleting HF data, verify an equivalent canonical copy exists or that the file is genuinely empty/stale.
-3. Record cleanup decisions in PR descriptions or `eval/README.md`.
+3. Record cleanup decisions in PR descriptions and this file.
 4. For Space trash, prefer fixing the allowlist and letting GitHub -> HF sync prune it after merge.
+
+## Internal project context
+
+1. `SPerva/ml-intern-sessions` is internal kitchen for exploratory agent traces. Do not treat it as evaluation methodology or public evidence.
+2. Devin session `devin-edd6eef4cda74faf909cb8bd08d3f7c8` is internal implementation context for PR #45 follow-up work.
+3. PR #53 (`feat/benchmark`) is temporary exploratory work. Extract useful benchmark ideas into reviewed GitHub changes, then close or supersede the PR and remove the branch when it is no longer needed.
+4. Keep internal inventories, cleanup notes, and agent action items here rather than in `eval/README.md`.
+
+## Recent cleanup state
+
+1. Duplicate result files under `SPerva/pillchecker-ner-benchmark/results/*.json` were deleted after approval; bucket result copies remain canonical.
+2. Empty trace `SPerva/ml-intern-sessions/sessions/2026-05-06/a720491d-d166-47b8-baad-1c2e71bb4ec1.jsonl` was deleted after approval.
+3. Bucket root `results.json` was moved to `benchmark-results/legacy/results.json`; the root copy was removed.
+4. The benchmark dataset card was corrected to document the current 500-case sample and dataset/result ownership rules.
+
+## Current action items
+
+1. Let the GitHub -> HF Space sync prune stale Space-only benchmark scripts after this PR merges to `main`.
+2. Close or supersede PR #53 after extracting any useful ideas into grounded follow-up work.
+3. Populate benchmark ground truth fields listed below before making stronger evaluation claims.
 
 ## Current known issues
 

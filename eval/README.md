@@ -1,96 +1,84 @@
-# PillChecker evaluation and Hugging Face asset plan
+# PillChecker evaluation methodology
 
-This file records the current evaluation architecture, the Hugging Face resource inventory, and the cleanup plan for benchmark assets. Agent-facing repository rules live in [`../AGENTS.md`](../AGENTS.md).
+This file describes how the PillChecker OCR-to-ingredient pipeline and downstream interaction checker should be evaluated. Repository/Hugging Face governance rules for agents live in [`../AGENTS.md`](../AGENTS.md).
 
-## Current sources
+## Evaluation assets
 
-| Source | Role | Current state |
-| --- | --- | --- |
-| GitHub `SPerekrestova/pillchecker-api` | Canonical application code and deployment workflow | Main branch has the FastAPI service, direct SQLite DrugBank client, tests, Docker build, and HF Space sync workflow. |
-| PR #53 `feat/benchmark` | Benchmark experiment proposal | Useful NER/linking ideas, but should not be merged as-is because some scripts are placeholders or require missing ground truth. |
-| HF Space `SPerva/pillchecker-staging` | Staging deployment mirror | Mostly mirrors GitHub main, but has stale benchmark scripts that will be pruned by the GitHub -> HF Space sync after merge. |
-| HF Dataset `SPerva/pillchecker-ner-benchmark` | Canonical benchmark cases | Contains `data/benchmark.json`; duplicate result JSON files were removed. The dataset lacks `expected_rxcuis`, `expected_interactions`, and clean OCR references needed for complete evaluation. |
-| HF Bucket `hf://buckets/SPerva/pillchecker-experiments` | Benchmark result history | Contains `BENCHMARK.md` and versioned result files under `benchmark-results/`, including the legacy root `results.json` moved to `benchmark-results/legacy/results.json`. |
-| HF Dataset `SPerva/ml-intern-sessions` | Private agent trace archive | Contains one substantive ML Intern trace; the empty JSONL file was removed. It is not a canonical project artifact store. |
-| Devin session `devin-edd6eef4cda74faf909cb8bd08d3f7c8` | PR #45 follow-up context | Confirms the project moved from a Node.js MCP process to direct Python SQLite DrugBank access and fixed error propagation/health-check behavior. |
+| Asset | Purpose |
+| --- | --- |
+| [`SPerva/pillchecker-ner-benchmark`](https://huggingface.co/datasets/SPerva/pillchecker-ner-benchmark) | Current benchmark input cases. |
+| [`hf://buckets/SPerva/pillchecker-experiments`](https://huggingface.co/buckets/SPerva/pillchecker-experiments) | Historical benchmark result runs and reports. |
+| [`benchmark_record.schema.json`](benchmark_record.schema.json) | Expected shape for benchmark input records. |
+| [`benchmark_run_manifest.schema.json`](benchmark_run_manifest.schema.json) | Expected shape for benchmark run metadata. |
 
-## What is missing
+The current published benchmark sample contains 500 synthesized pack-label texts generated from [MattBastar/Medicine_Details](https://huggingface.co/datasets/MattBastar/Medicine_Details). Each record currently includes `id`, `category`, `ocr_text`, `expected_names`, and `source_composition`.
 
-1. `expected_rxcuis` per benchmark case, so RxNorm/linking recall and oracle analysis can be measured.
-2. `clean_text` or another non-circular OCR reference per case, so OCR cleaner CER/WER can be evaluated.
-3. `expected_interactions` plus known-safe pairs, so interaction recall, false-alarm rate, and severity accuracy are meaningful.
-4. Reproducible GLiNER experiment code/configuration if GLiNER results remain in project-facing docs.
-5. Ground-truth population for the current published 500-case benchmark sample; earlier docs overstated the published dataset as 11,796 cases.
+## Active-ingredient extraction evaluation
 
-## Redundant or unsafe assets
+Evaluate the `/analyze` pipeline against `expected_names` with:
 
-| Asset | Classification | Recommendation |
-| --- | --- | --- |
-| HF Space `scripts/benchmark.py`, `scripts/benchmark_ocr.py`, `scripts/benchmark_interactions.py` | Stale Space-only files | Prune via the GitHub-to-HF Space sync workflow; benchmark code should not live only in the Space. |
-| HF Dataset `results/*.json` | Duplicate benchmark outputs | Removed after approval; bucket result copies remain canonical. |
-| HF Dataset `SPerva/ml-intern-sessions/.../a720491d-*.jsonl` | Empty trace file | Removed after approval. |
-| HF Bucket root `results.json` | Legacy unversioned result | Moved after approval to `benchmark-results/legacy/results.json`; root copy removed. |
-| README GLiNER best-result claim | Not reproducible from main | Remove or label as external until the experiment code and config are in the repo or dataset card. |
-| PR #53 benchmark scripts | Partially useful but not production-ready | Extract design ideas; do not merge wholesale until the missing dataset fields exist. |
+1. strict ingredient precision, recall, and F1 after normalization;
+2. lenient precision, recall, and F1 for casing, punctuation, and salt-form variants;
+3. false-positive taxonomy for brand names, excipients, dosages, packaging words, and OCR artifacts;
+4. confidence calibration and threshold sweeps for `needs_confirmation` behavior.
 
-## Canonical storage layout
+The benchmark should report pipeline configuration, model IDs, confidence thresholds, sample size, dataset revision, and Git commit in the run manifest.
 
-| Information type | Canonical location | Notes |
-| --- | --- | --- |
-| Runtime API code, Dockerfiles, tests, sync workflow | GitHub | GitHub remains the source of truth for deployable code. |
-| Small evaluation docs and schema definitions | GitHub `eval/` | Keep docs, schemas (`benchmark_record.schema.json`, `benchmark_run_manifest.schema.json`), and lightweight orchestration scripts here. Do not commit large datasets or result blobs. |
-| Benchmark input cases | HF Dataset `SPerva/pillchecker-ner-benchmark` | Store `data/benchmark.json` with the added ground-truth fields and dataset card methodology. |
-| Benchmark run outputs | HF Bucket `SPerva/pillchecker-experiments` | Store dated immutable outputs, e.g. `benchmark-results/YYYY-MM-DD/<run-id>/results.json` plus a manifest. |
-| Staging deployment | HF Space `SPerva/pillchecker-staging` | Space should be generated from GitHub main and should not be manually edited. |
-| Agent traces / exploratory notes | Private HF Dataset `SPerva/ml-intern-sessions` | Keep private and non-canonical; promote only reviewed conclusions into GitHub or the benchmark dataset card. |
-| Wiki material | Devin wiki / README links | Use for navigable architecture explanations, not as the only copy of benchmark data. |
+## RxNorm linking evaluation
 
-## Benchmark plan
+RxNorm linking recall and NIL behavior require `expected_rxcuis` in the benchmark records. Once those labels are populated, evaluate:
 
-### Phase 1: make the current NER benchmark reproducible
+1. ingredient-to-RxCUI exact-match accuracy;
+2. missing-link rate for valid ingredients;
+3. incorrect-link rate for ambiguous names;
+4. fallback behavior when NER misses an ingredient but RxNorm approximate search recovers it.
 
-1. Keep `SPerva/pillchecker-ner-benchmark` as the source of benchmark cases and validate records against `benchmark_record.schema.json`.
-2. Add a manifest to every benchmark run that follows `benchmark_run_manifest.schema.json`.
-3. Evaluate:
-   - strict/lenient active-ingredient precision, recall, F1;
-   - confidence calibration and threshold sweep;
-   - false-positive taxonomy with a better split than `other`;
-   - RxNorm linking success/NIL rate.
+Until `expected_rxcuis` exists, project docs should not make strong RxNorm-linking accuracy claims from this dataset.
 
-### Phase 2: add missing ground truth
+## OCR cleaner evaluation
 
-1. Populate `expected_rxcuis` for all or a representative stratified subset.
-2. Add `clean_text` for OCR-noise cases.
-3. Curate at least 200 interaction examples and a matched known-safe set.
-4. Re-run oracle analysis after `expected_rxcuis` exists.
+OCR-cleaner evaluation requires an independent `clean_text` reference for noisy cases. Once available, evaluate:
 
-### Phase 3: expand beyond NER
+1. character error rate before and after cleaning;
+2. word error rate before and after cleaning;
+3. downstream active-ingredient extraction impact;
+4. cleaner regressions on already-clean labels.
 
-1. Measure interaction detection recall and false-alarm rate against the curated interaction set.
-2. Measure severity parser/classifier accuracy on known interaction descriptions.
-3. Reintroduce GLiNER only with code, config, and artifacts that can reproduce the reported numbers.
+Do not use cleaner-generated output as its own oracle.
 
-## Sync pipeline
+## Interaction-checking evaluation
 
-The Space sync should be one-way and deterministic:
+Interaction evaluation requires `expected_interactions` and known-safe pairs. Once curated, evaluate:
 
-```text
-GitHub main -> GitHub Actions -> scripts/sync_hf_space.py -> SPerva/pillchecker-staging
-```
+1. interaction recall for known interacting ingredient pairs;
+2. false-alarm rate on known-safe pairs;
+3. severity accuracy for `minor`, `moderate`, `major`, and `unknown` labels;
+4. source routing accuracy between DrugBank and OpenFDA fallback evidence.
 
-The workflow should prune stale deployable paths before upload, which prevents manually added Space-only files from persisting. Benchmark datasets/results should not flow through the Space sync; they are managed separately through the HF Dataset and bucket.
+Until this ground truth exists, interaction metrics should be treated as smoke tests rather than benchmark claims.
 
-For benchmark outputs, use a manual workflow or local script that uploads only generated result artifacts to `hf://buckets/SPerva/pillchecker-experiments/benchmark-results/<date>/<run-id>/` and updates the dataset card only when methodology changes.
+## Experiment workflow
 
-## Cleanup status
+1. Pin the Git commit, dataset revision, model IDs, confidence thresholds, and command.
+2. Run the evaluation against a fixed sample or full benchmark split.
+3. Write `manifest.json` following `benchmark_run_manifest.schema.json`.
+4. Store result artifacts under `benchmark-results/<YYYY-MM-DD>/<run-id>/` in the experiments bucket.
+5. Keep large result JSON files out of GitHub; commit only lightweight methodology, schemas, and orchestration code.
+6. Update the dataset card when the benchmark methodology or schema changes.
 
-Completed after explicit approval:
+## Current progress
 
-1. Deleted duplicate HF dataset files under `SPerva/pillchecker-ner-benchmark/results/*.json` after verifying bucket copies were retained.
-2. Deleted the empty private trace `SPerva/ml-intern-sessions/sessions/2026-05-06/a720491d-d166-47b8-baad-1c2e71bb4ec1.jsonl`.
-3. Moved bucket root `results.json` to `benchmark-results/legacy/results.json` and removed the root copy.
+Completed:
 
-Still pending:
+1. The current 500-case NER benchmark sample is published on Hugging Face.
+2. Historical OpenMed baseline results are preserved in the experiments bucket.
+3. Public README and dataset card now describe the current 500-case sample size.
+4. The unreproducible GLiNER best-result claim has been removed from project-facing README tables until its code, configuration, and artifacts are reproducible.
 
-1. Close or supersede PR #53 after extracting any useful benchmark ideas into a grounded follow-up plan.
-2. Let the GitHub -> HF Space sync prune stale Space-only benchmark scripts after this PR merges to `main`.
+Next evaluation work:
+
+1. Populate `expected_rxcuis` for the current benchmark sample.
+2. Add independent `clean_text` references for OCR-noise cases.
+3. Curate interaction-positive and known-safe ingredient pairs.
+4. Add benchmark scripts that read the HF dataset, write manifest-backed bucket results, and can be reproduced from a GitHub commit.
+5. Reintroduce any GLiNER comparison only with reproducible code, configuration, and stored artifacts.
