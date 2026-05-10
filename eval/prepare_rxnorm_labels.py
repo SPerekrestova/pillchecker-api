@@ -8,7 +8,7 @@ import asyncio
 import json
 import os
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from huggingface_hub import HfApi, hf_hub_download
 
@@ -79,6 +79,31 @@ async def _build_resolutions(names: list[str]) -> dict[str, dict[str, object]]:
     return resolutions
 
 
+def _generated_exact_rxcuis(resolutions: list[dict[str, object]]) -> list[str]:
+    return [
+        str(resolution["rxcui"])
+        for resolution in resolutions
+        if resolution.get("status") == "exact" and resolution.get("rxcui")
+    ]
+
+
+def _merge_expected_rxcuis(record: dict[str, object], generated: list[str]) -> list[str]:
+    existing_value = record.get("expected_rxcuis")
+    if existing_value is None:
+        return generated
+
+    existing = _string_list(existing_value, "expected_rxcuis")
+    merged = list(dict.fromkeys([*existing, *generated]))
+    if set(merged) != set(existing):
+        record_id = record.get("id", "<unknown>")
+        added = sorted(set(merged) - set(existing))
+        print(
+            f"Preserved existing expected_rxcuis for {record_id}; "
+            f"appended generated exact matches: {added}"
+        )
+    return merged
+
+
 def _enrich_records(
     records: list[dict[str, object]],
     resolutions: dict[str, dict[str, object]],
@@ -89,12 +114,9 @@ def _enrich_records(
         expected_names = _string_list(record.get("expected_names"), "expected_names")
         row = dict(record)
         row.setdefault("source_dataset", source_dataset)
-        row["rxnorm_resolution"] = [resolutions[name] for name in expected_names]
-        row["expected_rxcuis"] = [
-            str(resolution["rxcui"])
-            for resolution in row["rxnorm_resolution"]
-            if isinstance(resolution, dict) and resolution.get("status") == "exact"
-        ]
+        rxnorm_resolution = [resolutions[name] for name in expected_names]
+        row["rxnorm_resolution"] = rxnorm_resolution
+        row["expected_rxcuis"] = _merge_expected_rxcuis(record, _generated_exact_rxcuis(rxnorm_resolution))
         enriched.append(row)
     return enriched
 
@@ -132,9 +154,14 @@ def _summarize(enriched: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
-def _upload_if_requested(repo_id: str, output: Path, upload_path: str | None) -> None:
+def _upload_if_requested(repo_id: str, output: Path, upload_path: str | None, source_path: str) -> None:
     if upload_path is None:
         return
+    if PurePosixPath(upload_path) == PurePosixPath(source_path):
+        raise SystemExit(
+            f"Refusing to overwrite canonical benchmark data at {source_path}; "
+            "upload candidates to a review path"
+        )
     token = os.environ.get("HF_TOKEN")
     if not token:
         raise SystemExit("HF_TOKEN is required when --upload-path is set")
@@ -156,7 +183,10 @@ async def main() -> None:
     parser.add_argument(
         "--upload-path",
         default=None,
-        help="Optional HF dataset path for the generated candidate file. Do not overwrite data/benchmark.json until labels are reviewed.",
+        help=(
+            "Optional HF dataset path for the generated candidate file. "
+            "Uploading over the source benchmark path is refused."
+        ),
     )
     args = parser.parse_args()
 
@@ -170,7 +200,7 @@ async def main() -> None:
     summary = _summarize(enriched)
     _write_json(output.with_suffix(".summary.json"), summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    _upload_if_requested(args.repo_id, output, args.upload_path)
+    _upload_if_requested(args.repo_id, output, args.upload_path, args.dataset_path)
 
 
 if __name__ == "__main__":

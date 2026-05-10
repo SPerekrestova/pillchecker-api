@@ -8,10 +8,15 @@ import json
 import os
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 USER_AGENT = "pillchecker-api-build"
 DEFAULT_ASSET = "drugbank.db"
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def _request(url: str, token: str | None, accept: str) -> Request:
@@ -23,6 +28,10 @@ def _request(url: str, token: str | None, accept: str) -> Request:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return Request(url, headers=headers)
+
+
+def _download_request(url: str) -> Request:
+    return Request(url, headers={"User-Agent": USER_AGENT})
 
 
 def _load_release(repo: str, tag: str, token: str | None) -> dict[str, object]:
@@ -47,15 +56,31 @@ def _find_asset_url(release: dict[str, object], asset_name: str) -> str:
     raise RuntimeError(f"Asset {asset_name!r} not found. Available assets: {available}")
 
 
+def _copy_response(response, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with open(output, "wb") as handle:
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            handle.write(chunk)
+
+
 def _download_asset(asset_url: str, output: Path, token: str | None) -> None:
-    with urlopen(_request(asset_url, token, "application/octet-stream"), timeout=120) as response:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        with open(output, "wb") as handle:
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                handle.write(chunk)
+    opener = build_opener(_NoRedirectHandler)
+    try:
+        with opener.open(_request(asset_url, token, "application/octet-stream"), timeout=120) as response:
+            _copy_response(response, output)
+            return
+    except HTTPError as exc:
+        if exc.code not in {301, 302, 303, 307, 308}:
+            raise
+        location = exc.headers.get("Location")
+        if not location:
+            raise RuntimeError("GitHub release asset redirect did not include a Location header") from exc
+
+    with urlopen(_download_request(location), timeout=120) as response:
+        _copy_response(response, output)
 
 
 def main() -> None:
