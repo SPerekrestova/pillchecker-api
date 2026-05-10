@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has-gcp: ${{ steps.check.outputs.has-gcp }}
+      has-drugbank-db: ${{ steps.check.outputs.has-drugbank-db }}
     steps:
       - id: check
         run: |
@@ -20,6 +21,12 @@ jobs:
           else
             echo "has-gcp=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Skipping GCP build/deploy because WIF_PROVIDER, WIF_SERVICE_ACCOUNT, or GCP_PROJECT_ID is not configured."
+          fi
+          if [ -n "${{ secrets.DRUGBANK_DB_REPO }}" ] && [ -z "${{ secrets.DRUGBANK_DB_TOKEN }}" ]; then
+            echo "has-drugbank-db=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Docker image build because DRUGBANK_DB_REPO is configured but DRUGBANK_DB_TOKEN is missing."
+          else
+            echo "has-drugbank-db=true" >> "$GITHUB_OUTPUT"
           fi
 
   unit-tests:
@@ -46,7 +53,7 @@ jobs:
     name: Build Image
     runs-on: ubuntu-latest
     needs: check-secrets
-    if: needs.check-secrets.outputs.has-gcp == 'true'
+    if: needs.check-secrets.outputs.has-gcp == 'true' && needs.check-secrets.outputs.has-drugbank-db == 'true'
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -94,7 +101,7 @@ jobs:
     name: Integration Smoke Tests
     runs-on: ubuntu-latest
     needs: [check-secrets, build]
-    if: always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.check-secrets.result == 'success'))
+    if: always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.check-secrets.outputs.has-drugbank-db == 'true'))
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -174,7 +181,7 @@ jobs:
   deploy:
     name: Deploy
     needs: [unit-tests, integration-tests, build, check-secrets]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check-secrets.outputs.has-gcp == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check-secrets.outputs.has-gcp == 'true' && needs.check-secrets.outputs.has-drugbank-db == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
