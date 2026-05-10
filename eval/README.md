@@ -13,6 +13,17 @@ This file describes how the PillChecker OCR-to-ingredient pipeline and downstrea
 
 The current published benchmark sample contains 500 synthesized pack-label texts generated from [MattBastar/Medicine_Details](https://huggingface.co/datasets/MattBastar/Medicine_Details). Each record currently includes `id`, `category`, `ocr_text`, `expected_names`, and `source_composition`. The sample has 199 unique expected ingredient names; an audit found exact RxNorm matches for 183 of them and 16 names requiring review.
 
+## Why the current sample is 500 records
+
+The source dataset has more than 11k product rows, but those rows are not yet a validated evaluation benchmark. The current 500-record sample is a reviewable seed split: it is small enough to audit manually, exercise many source categories and ingredient strings, and avoid publishing stronger accuracy claims before RxNorm links, clean-text references, interaction positives, and known-safe pairs are reviewed.
+
+Scaling should be staged rather than copying all 11k+ rows into the benchmark at once:
+
+1. stratify the full source dataset by category, ingredient count, OCR difficulty, and active-ingredient frequency;
+2. expand to a larger fixed benchmark split after adding reviewed `expected_rxcuis` and cleaner references;
+3. keep a separate stress-test split for the full 11k+ source rows where labels are weak or generated;
+4. report metrics separately for reviewed benchmark records and weakly labeled stress-test records.
+
 ## Active-ingredient extraction evaluation
 
 Evaluate the `/analyze` pipeline against `expected_names` with:

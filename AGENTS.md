@@ -86,15 +86,17 @@ These rules are authoritative for AI agents working in this repository.
 4. `scripts/e2e-test.sh` is the broader API contract test for iOS-facing fields.
 5. `scripts/smoke_test_interactions.py` is the targeted interaction-regression smoke test.
 6. `scripts/ci-startup.sh` and `scripts/prod-startup.sh` are both required because Docker Compose CI overrides the production entrypoint.
+7. `scripts/download_drugbank_db.py` remains necessary while Docker builds fetch a pinned SQLite DB from GitHub Releases; remove it only after replacing the build-time DB source with a non-GitHub artifact flow.
 
 ## GCP pipeline rules
 
 1. GitHub Actions deploys to Cloud Run only when `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`, and `GCP_PROJECT_ID` are configured.
 2. The deployer identity should use Workload Identity Federation, not long-lived JSON keys.
 3. Set `CLOUD_RUN_SERVICE_ACCOUNT` when runtime should use an account other than the default `deploy-sa@<project>.iam.gserviceaccount.com`.
-4. Keep the Docker build fallback repo as `openpharma-org/drugbank-mcp-server`; override with `DRUGBANK_DB_REPO` only when intentionally testing a different pinned DB source.
-5. Configure `DRUGBANK_DB_TOKEN` if the pinned DrugBank release asset requires authentication beyond the repository-scoped GitHub token.
+4. Set `DRUGBANK_DB_REPO` explicitly to a maintained GitHub release repo that publishes `drugbank.db`; do not rely on `openpharma-org/drugbank-mcp-server` as a default DB release source.
+5. Keep `DRUGBANK_DB_TAG` pinned and configure `DRUGBANK_DB_TOKEN` when the DB release asset is private or rate-limited.
 6. Do not store GCP credentials in the repository.
+7. Current alternatives check: `genomoncology/biomcp`, `googlarz/health-skill`, and `maziyarpanahi/openmed` do not replace DrugBank interaction data; they are literature/health-tracking/NLP tools rather than maintained drug-drug interaction databases.
 
 ## Recent cleanup state
 
@@ -117,3 +119,4 @@ These rules are authoritative for AI agents working in this repository.
 3. GLiNER results should stay out of README/project claims until code, configuration, and artifacts are reproducible.
 4. Interaction benchmark results are not meaningful until real interaction ground truth exists.
 5. OCR-cleaner evaluation must use independent clean references, not cleaner-generated text as its own oracle.
+6. The OpenPharma DrugBank MCP repository currently has no Git release refs to use as a stable SQLite DB source; configure an explicit controlled DB release source before enabling Docker build/deploy jobs.

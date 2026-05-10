@@ -19,12 +19,13 @@ FROM python:3.12-slim AS db-downloader
 
 WORKDIR /app/drugbank-mcp-server/data
 
-# Download a pinned version of the pre-built SQLite DB.
+# Download a pinned version of the pre-built SQLite DB from an explicit release source.
 # Pinning the tag ensures deterministic builds and allows Docker to cache this layer reliably.
-ARG DRUGBANK_DB_REPO=openpharma-org/drugbank-mcp-server
+ARG DRUGBANK_DB_REPO
 ARG DRUGBANK_DB_TAG=db-2026-04-01
 COPY scripts/download_drugbank_db.py /tmp/download_drugbank_db.py
 RUN --mount=type=secret,id=github_token,required=false \
+    test -n "${DRUGBANK_DB_REPO}" || { echo "DRUGBANK_DB_REPO build arg is required"; exit 1; }; \
     if [ -f /run/secrets/github_token ]; then export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; fi; \
     python /tmp/download_drugbank_db.py \
       --repo "${DRUGBANK_DB_REPO}" \

@@ -22,11 +22,14 @@ jobs:
             echo "has-gcp=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Skipping GCP build/deploy because WIF_PROVIDER, WIF_SERVICE_ACCOUNT, or GCP_PROJECT_ID is not configured."
           fi
-          if [ -n "${{ secrets.DRUGBANK_DB_REPO }}" ] && [ -z "${{ secrets.DRUGBANK_DB_TOKEN }}" ]; then
+          if [ -z "${{ secrets.DRUGBANK_DB_REPO }}" ]; then
             echo "has-drugbank-db=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping Docker image build because DRUGBANK_DB_REPO is configured but DRUGBANK_DB_TOKEN is missing."
+            echo "::notice::Skipping Docker image build because DRUGBANK_DB_REPO is not configured. Set it to an explicit GitHub release repo that publishes drugbank.db."
           else
             echo "has-drugbank-db=true" >> "$GITHUB_OUTPUT"
+            if [ -z "${{ secrets.DRUGBANK_DB_TOKEN }}" ]; then
+              echo "::notice::DRUGBANK_DB_TOKEN is unset; Docker build will try unauthenticated GitHub release download. Configure a token for private or rate-limited DB repos."
+            fi
           fi
 
   unit-tests:
@@ -89,9 +92,10 @@ jobs:
           push: true
           tags: ${{ env.IMAGE_TAG }}
           build-args: |
-            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO || 'openpharma-org/drugbank-mcp-server' }}
+            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
+            DRUGBANK_DB_TAG=${{ secrets.DRUGBANK_DB_TAG || 'db-2026-04-01' }}
           secrets: |
-            github_token=${{ secrets.DRUGBANK_DB_TOKEN || github.token }}
+            github_token=${{ secrets.DRUGBANK_DB_TOKEN }}
           cache-from: |
             type=registry,ref=${{ env.CACHE_TAG }}
             type=registry,ref=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:cache-main
@@ -132,7 +136,7 @@ jobs:
 
       - name: Pull or Build image
         env:
-          GITHUB_TOKEN: ${{ secrets.DRUGBANK_DB_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.DRUGBANK_DB_TOKEN }}
         run: |
           if [ "${{ needs.build.result }}" == "success" ]; then
             echo "Pulling pre-built image from registry..."
@@ -142,7 +146,8 @@ jobs:
             echo "Build job was skipped or secrets missing, building locally..."
             docker build \
               --secret id=github_token,env=GITHUB_TOKEN \
-              --build-arg DRUGBANK_DB_REPO="${{ secrets.DRUGBANK_DB_REPO || 'openpharma-org/drugbank-mcp-server' }}" \
+              --build-arg DRUGBANK_DB_REPO="${{ secrets.DRUGBANK_DB_REPO }}" \
+              --build-arg DRUGBANK_DB_TAG="${{ secrets.DRUGBANK_DB_TAG || 'db-2026-04-01' }}" \
               -t pillchecker-api:ci .
           fi
 
@@ -212,7 +217,8 @@ jobs:
           image: ${{ env.IMAGE_TAG }}
           region: europe-west1
           env_vars: |
-            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO || 'openpharma-org/drugbank-mcp-server' }}
+            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
+            DRUGBANK_DB_TAG=${{ secrets.DRUGBANK_DB_TAG || 'db-2026-04-01' }}
           secrets: |
             API_KEY=API_KEY:latest
             HF_TOKEN=HF_TOKEN:latest
