@@ -37,9 +37,9 @@ async def lifespan(app: FastAPI):
     logger.info("Loading severity classifier...")
     severity_classifier.load_model()
     logger.info("Severity classifier loaded: %s", severity_classifier.is_loaded())
-    logger.info("Connecting to DrugBank MCP server...")
+    logger.info("Connecting to DrugBank SQLite database...")
     await drugbank_client.connect()
-    logger.info("DrugBank MCP connected: %s", await drugbank_client.health_check())
+    logger.info("DrugBank SQLite connected: %s", await drugbank_client.health_check())
     yield
     await drugbank_client.close()
 

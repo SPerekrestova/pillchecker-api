@@ -45,12 +45,13 @@ These rules are authoritative for AI agents working in this repository.
    - OCR noise level or source split
    - source medicine metadata needed to reproduce the case
 4. Add these fields before using the benchmark for linking or interaction claims:
-   - `expected_rxcuis`
+   - reviewed `expected_rxcuis` plus `rxnorm_resolution`
    - `clean_text` for OCR-cleaner evaluation
    - `expected_interactions` for interaction recall/severity evaluation
    - known-safe pairs for false-positive measurement
-5. The dataset card must explain data generation, license/source, schema, and limitations.
-6. Do not commit large benchmark data or result JSON files to GitHub.
+5. Use `eval/prepare_rxnorm_labels.py` to generate reviewable RxNorm candidate labels. Do not overwrite `data/benchmark.json` until the non-exact candidates are reviewed.
+6. The dataset card must explain data generation, license/source, schema, and limitations.
+7. Do not commit large benchmark data or result JSON files to GitHub.
 
 ## Benchmark result rules
 
@@ -77,6 +78,26 @@ These rules are authoritative for AI agents working in this repository.
 3. PR #53 (`feat/benchmark`) is temporary exploratory work. Extract useful benchmark ideas into reviewed GitHub changes, then close or supersede the PR and remove the branch when it is no longer needed.
 4. Keep internal inventories, cleanup notes, and agent action items here rather than in `eval/README.md`.
 
+## Docs and scripts audit
+
+1. `docs/openapi.json` is generated API contract documentation and should be regenerated after schema or route changes.
+2. `docs/infrastructure_hardening.md` is active GCP audit documentation, not trash.
+3. `scripts/smoke-test.sh` is the quick service readiness/API smoke test.
+4. `scripts/e2e-test.sh` is the broader API contract test for iOS-facing fields.
+5. `scripts/smoke_test_interactions.py` is the targeted interaction-regression smoke test.
+6. `scripts/ci-startup.sh` and `scripts/prod-startup.sh` are both required because Docker Compose CI overrides the production entrypoint.
+7. `scripts/download_drugbank_db.py` remains necessary while Docker builds fetch a pinned SQLite DB from GitHub Releases; remove it only after replacing the build-time DB source with a non-GitHub artifact flow.
+
+## GCP pipeline rules
+
+1. GitHub Actions deploys to Cloud Run only when `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`, and `GCP_PROJECT_ID` are configured.
+2. The deployer identity should use Workload Identity Federation, not long-lived JSON keys.
+3. Set `CLOUD_RUN_SERVICE_ACCOUNT` when runtime should use an account other than the default `deploy-sa@<project>.iam.gserviceaccount.com`.
+4. Set `DRUGBANK_DB_REPO` explicitly to a maintained GitHub release repo that publishes `drugbank.db`; do not rely on `openpharma-org/drugbank-mcp-server` as a default DB release source.
+5. Keep `DRUGBANK_DB_TAG` pinned and configure `DRUGBANK_DB_TOKEN` before enabling CI image builds or Cloud Run deploys for the explicit DB release source.
+6. Do not store GCP credentials in the repository.
+7. Current alternatives check: `genomoncology/biomcp`, `googlarz/health-skill`, and `maziyarpanahi/openmed` do not replace DrugBank interaction data; they are literature/health-tracking/NLP tools rather than maintained drug-drug interaction databases.
+
 ## Recent cleanup state
 
 1. Duplicate result files under `SPerva/pillchecker-ner-benchmark/results/*.json` were deleted after approval; bucket result copies remain canonical.
@@ -88,11 +109,26 @@ These rules are authoritative for AI agents working in this repository.
 
 1. Let the GitHub -> HF Space sync prune stale Space-only benchmark scripts after this PR merges to `main`.
 2. Close or supersede PR #53 after extracting any useful ideas into grounded follow-up work.
-3. Populate benchmark ground truth fields listed below before making stronger evaluation claims.
+3. Review the 16 RxNorm non-exact ingredient candidates before updating the canonical benchmark dataset.
+4. Populate benchmark ground truth fields listed below before making stronger evaluation claims.
+
+## Next implementation after PR #55
+
+Start with the controlled DrugBank DB artifact and GCP deploy-hardening track before expanding benchmark scope. `docs/infrastructure_hardening.md` contains the detailed plan; the execution order for the next Devin session is:
+
+1. Create or choose a maintained `drugbank.db` artifact source controlled by this project, then configure GitHub Actions `DRUGBANK_DB_REPO`, pinned `DRUGBANK_DB_TAG`, and `DRUGBANK_DB_TOKEN`.
+2. Add a release preflight job that verifies the configured tag, `drugbank.db` asset, size, and checksum before Docker build.
+3. Add checksum pinning, such as `DRUGBANK_DB_SHA256`, and verify it in the download/build path.
+4. Re-enable and validate Docker image build, integration smoke tests, Cloud Run deploy, `/health`, `/health/data`, and one authenticated `/interactions` request.
+5. Add Cloud Run hardening flags: startup/liveness probes, explicit runtime service account, revision labels, and instance policy.
+6. Add post-deploy smoke tests and logging/alerting for startup failures, DrugBank connection failures, and repeated 5xx responses.
+7. After DB/deploy infrastructure is trustworthy, continue benchmark expansion from the 500 reviewed seed toward larger reviewed and weak-label stress-test splits.
 
 ## Current known issues
 
-1. Benchmark cases still need `expected_rxcuis`, `clean_text`, `expected_interactions`, and known-safe pairs.
-2. GLiNER results should stay out of README/project claims until code, configuration, and artifacts are reproducible.
-3. Interaction benchmark results are not meaningful until real interaction ground truth exists.
-4. OCR-cleaner evaluation must use independent clean references, not cleaner-generated text as its own oracle.
+1. Benchmark cases still need reviewed `expected_rxcuis`, `clean_text`, `expected_interactions`, and known-safe pairs.
+2. RxNorm audit exact-match coverage is 183/199 unique ingredient names; the remaining 16 names need human review before canonical dataset rewrite.
+3. GLiNER results should stay out of README/project claims until code, configuration, and artifacts are reproducible.
+4. Interaction benchmark results are not meaningful until real interaction ground truth exists.
+5. OCR-cleaner evaluation must use independent clean references, not cleaner-generated text as its own oracle.
+6. The OpenPharma DrugBank MCP repository currently has no Git release refs to use as a stable SQLite DB source; configure an explicit controlled DB release source before enabling Docker build/deploy jobs.

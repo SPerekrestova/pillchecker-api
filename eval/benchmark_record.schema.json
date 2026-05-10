@@ -32,10 +32,37 @@
     },
     "expected_rxcuis": {
       "type": "array",
-      "description": "Gold RxNorm identifiers aligned to expected active ingredients.",
+      "description": "Reviewed RxNorm identifiers for expected active ingredients. Missing entries must be explained in rxnorm_resolution.",
       "items": {
         "type": "string",
         "pattern": "^[0-9]+$"
+      }
+    },
+    "rxnorm_resolution": {
+      "type": "array",
+      "description": "Per-ingredient RxNorm resolution status for expected_names.",
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "additionalProperties": true,
+        "properties": {
+          "name": {"type": "string"},
+          "status": {"type": "string", "enum": ["exact", "needs_review", "unresolved", "not_applicable"]},
+          "rxcui": {"type": ["string", "null"], "pattern": "^[0-9]+$"},
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "rxcui": {"type": "string", "pattern": "^[0-9]+$"},
+                "name": {"type": "string"},
+                "score": {"type": "number"}
+              }
+            }
+          },
+          "notes": {"type": "string"}
+        }
       }
     },
     "expected_interactions": {
@@ -52,6 +79,23 @@
           "rxcui_b": {"type": "string", "pattern": "^[0-9]+$"},
           "interacts": {"type": "boolean"},
           "severity": {"type": "string", "enum": ["minor", "moderate", "major", "unknown"]},
+          "source": {"type": "string"}
+        }
+      }
+    },
+    "known_safe_pairs": {
+      "type": "array",
+      "description": "Reviewed drug pairs expected not to interact for false-positive checks.",
+      "items": {
+        "type": "object",
+        "required": ["drug_a", "drug_b", "interacts"],
+        "additionalProperties": true,
+        "properties": {
+          "drug_a": {"type": "string"},
+          "drug_b": {"type": "string"},
+          "rxcui_a": {"type": "string", "pattern": "^[0-9]+$"},
+          "rxcui_b": {"type": "string", "pattern": "^[0-9]+$"},
+          "interacts": {"const": false},
           "source": {"type": "string"}
         }
       }

@@ -12,13 +12,24 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has-gcp: ${{ steps.check.outputs.has-gcp }}
+      has-drugbank-db: ${{ steps.check.outputs.has-drugbank-db }}
     steps:
       - id: check
         run: |
-          if [ "${{ secrets.WIF_PROVIDER }}" != "" ]; then
+          if [ -n "${{ secrets.WIF_PROVIDER }}" ] && [ -n "${{ secrets.WIF_SERVICE_ACCOUNT }}" ] && [ -n "${{ secrets.GCP_PROJECT_ID }}" ]; then
             echo "has-gcp=true" >> "$GITHUB_OUTPUT"
           else
             echo "has-gcp=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping GCP build/deploy because WIF_PROVIDER, WIF_SERVICE_ACCOUNT, or GCP_PROJECT_ID is not configured."
+          fi
+          if [ -z "${{ secrets.DRUGBANK_DB_REPO }}" ]; then
+            echo "has-drugbank-db=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Docker image build because DRUGBANK_DB_REPO is not configured. Set it to an explicit GitHub release repo that publishes drugbank.db."
+          elif [ -z "${{ secrets.DRUGBANK_DB_TOKEN }}" ]; then
+            echo "has-drugbank-db=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Docker image build because DRUGBANK_DB_TOKEN is not configured for the explicit DrugBank DB release source."
+          else
+            echo "has-drugbank-db=true" >> "$GITHUB_OUTPUT"
           fi
 
   unit-tests:
@@ -45,7 +56,7 @@ jobs:
     name: Build Image
     runs-on: ubuntu-latest
     needs: check-secrets
-    if: needs.check-secrets.outputs.has-gcp == 'true'
+    if: needs.check-secrets.outputs.has-gcp == 'true' && needs.check-secrets.outputs.has-drugbank-db == 'true'
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -82,6 +93,9 @@ jobs:
           tags: ${{ env.IMAGE_TAG }}
           build-args: |
             DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
+            DRUGBANK_DB_TAG=${{ secrets.DRUGBANK_DB_TAG || 'db-2026-04-01' }}
+          secrets: |
+            github_token=${{ secrets.DRUGBANK_DB_TOKEN }}
           cache-from: |
             type=registry,ref=${{ env.CACHE_TAG }}
             type=registry,ref=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:cache-main
@@ -91,7 +105,7 @@ jobs:
     name: Integration Smoke Tests
     runs-on: ubuntu-latest
     needs: [check-secrets, build]
-    if: always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.check-secrets.result == 'success'))
+    if: always() && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.check-secrets.outputs.has-drugbank-db == 'true'))
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -121,6 +135,8 @@ jobs:
         run: gcloud auth configure-docker europe-west1-docker.pkg.dev
 
       - name: Pull or Build image
+        env:
+          GITHUB_TOKEN: ${{ secrets.DRUGBANK_DB_TOKEN }}
         run: |
           if [ "${{ needs.build.result }}" == "success" ]; then
             echo "Pulling pre-built image from registry..."
@@ -129,7 +145,9 @@ jobs:
           else
             echo "Build job was skipped or secrets missing, building locally..."
             docker build \
+              --secret id=github_token,env=GITHUB_TOKEN \
               --build-arg DRUGBANK_DB_REPO="${{ secrets.DRUGBANK_DB_REPO }}" \
+              --build-arg DRUGBANK_DB_TAG="${{ secrets.DRUGBANK_DB_TAG || 'db-2026-04-01' }}" \
               -t pillchecker-api:ci .
           fi
 
@@ -168,7 +186,7 @@ jobs:
   deploy:
     name: Deploy
     needs: [unit-tests, integration-tests, build, check-secrets]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check-secrets.outputs.has-gcp == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.check-secrets.outputs.has-gcp == 'true' && needs.check-secrets.outputs.has-drugbank-db == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
@@ -200,6 +218,7 @@ jobs:
           region: europe-west1
           env_vars: |
             DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
+            DRUGBANK_DB_TAG=${{ secrets.DRUGBANK_DB_TAG || 'db-2026-04-01' }}
           secrets: |
             API_KEY=API_KEY:latest
             HF_TOKEN=HF_TOKEN:latest
@@ -209,4 +228,4 @@ jobs:
             --memory=2Gi
             --cpu=1
             --concurrency=80
-            --service-account=deploy-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+            --service-account=${{ secrets.CLOUD_RUN_SERVICE_ACCOUNT || format('deploy-sa@{0}.iam.gserviceaccount.com', secrets.GCP_PROJECT_ID) }}

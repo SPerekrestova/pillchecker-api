@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM ghcr.io/astral-sh/uv:0.9-python3.12-bookworm-slim AS builder
 
 WORKDIR /app
@@ -17,13 +19,18 @@ FROM python:3.12-slim AS db-downloader
 
 WORKDIR /app/drugbank-mcp-server/data
 
-# Use curl to download a pinned version of the pre-built SQLite DB.
+# Download a pinned version of the pre-built SQLite DB from an explicit release source.
 # Pinning the tag ensures deterministic builds and allows Docker to cache this layer reliably.
-ARG DRUGBANK_DB_REPO=openpharma-org/drugbank-mcp-server
+ARG DRUGBANK_DB_REPO
 ARG DRUGBANK_DB_TAG=db-2026-04-01
-RUN apt-get update && apt-get install -y curl && \
-    curl -fL -o drugbank.db "https://github.com/${DRUGBANK_DB_REPO}/releases/download/${DRUGBANK_DB_TAG}/drugbank.db" && \
-    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+COPY scripts/download_drugbank_db.py /tmp/download_drugbank_db.py
+RUN --mount=type=secret,id=github_token,required=false \
+    test -n "${DRUGBANK_DB_REPO}" || { echo "DRUGBANK_DB_REPO build arg is required"; exit 1; }; \
+    if [ -f /run/secrets/github_token ]; then export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; fi; \
+    python /tmp/download_drugbank_db.py \
+      --repo "${DRUGBANK_DB_REPO}" \
+      --tag "${DRUGBANK_DB_TAG}" \
+      --output drugbank.db
 
 # --- Runtime stage ---
 FROM python:3.12-slim
