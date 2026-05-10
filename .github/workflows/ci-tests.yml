@@ -83,6 +83,8 @@ jobs:
           tags: ${{ env.IMAGE_TAG }}
           build-args: |
             DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO || 'openpharma-org/drugbank-mcp-server' }}
+          secrets: |
+            github_token=${{ secrets.DRUGBANK_DB_TOKEN || github.token }}
           cache-from: |
             type=registry,ref=${{ env.CACHE_TAG }}
             type=registry,ref=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:cache-main
@@ -122,6 +124,8 @@ jobs:
         run: gcloud auth configure-docker europe-west1-docker.pkg.dev
 
       - name: Pull or Build image
+        env:
+          GITHUB_TOKEN: ${{ secrets.DRUGBANK_DB_TOKEN || github.token }}
         run: |
           if [ "${{ needs.build.result }}" == "success" ]; then
             echo "Pulling pre-built image from registry..."
@@ -130,6 +134,7 @@ jobs:
           else
             echo "Build job was skipped or secrets missing, building locally..."
             docker build \
+              --secret id=github_token,env=GITHUB_TOKEN \
               --build-arg DRUGBANK_DB_REPO="${{ secrets.DRUGBANK_DB_REPO || 'openpharma-org/drugbank-mcp-server' }}" \
               -t pillchecker-api:ci .
           fi

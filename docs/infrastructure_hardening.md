@@ -10,6 +10,7 @@ This note summarizes the current GitHub Actions -> Google Cloud Run pipeline and
 - Runtime target: Cloud Run service `pillchecker-api` in `europe-west1`.
 - Runtime secrets: `API_KEY` and `HF_TOKEN` are mounted from Secret Manager.
 - DrugBank DB source: Docker build arg `DRUGBANK_DB_REPO`, defaulting to `openpharma-org/drugbank-mcp-server` when the secret is unset.
+- DrugBank DB release auth: Docker builds pass `DRUGBANK_DB_TOKEN` when configured, otherwise the workflow falls back to the repository-scoped GitHub token.
 
 ## 1. IAM permissions: principle of least privilege
 
@@ -70,6 +71,7 @@ Completed improvements:
 Remaining recommendations:
 
 - Keep `DRUGBANK_DB_TAG` pinned for reproducibility.
+- Configure `DRUGBANK_DB_TOKEN` if the DB release asset is private or outside the current repository token scope.
 - Rebuild images when the pinned DrugBank release changes.
 - Continue avoiding runtime downloads for required models and databases.
 

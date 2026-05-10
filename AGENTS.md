@@ -93,7 +93,8 @@ These rules are authoritative for AI agents working in this repository.
 2. The deployer identity should use Workload Identity Federation, not long-lived JSON keys.
 3. Set `CLOUD_RUN_SERVICE_ACCOUNT` when runtime should use an account other than the default `deploy-sa@<project>.iam.gserviceaccount.com`.
 4. Keep the Docker build fallback repo as `openpharma-org/drugbank-mcp-server`; override with `DRUGBANK_DB_REPO` only when intentionally testing a different pinned DB source.
-5. Do not store GCP credentials in the repository.
+5. Configure `DRUGBANK_DB_TOKEN` if the pinned DrugBank release asset requires authentication beyond the repository-scoped GitHub token.
+6. Do not store GCP credentials in the repository.
 
 ## Recent cleanup state
 
