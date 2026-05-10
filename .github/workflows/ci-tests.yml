@@ -25,11 +25,11 @@ jobs:
           if [ -z "${{ secrets.DRUGBANK_DB_REPO }}" ]; then
             echo "has-drugbank-db=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Skipping Docker image build because DRUGBANK_DB_REPO is not configured. Set it to an explicit GitHub release repo that publishes drugbank.db."
+          elif [ -z "${{ secrets.DRUGBANK_DB_TOKEN }}" ]; then
+            echo "has-drugbank-db=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Docker image build because DRUGBANK_DB_TOKEN is not configured for the explicit DrugBank DB release source."
           else
             echo "has-drugbank-db=true" >> "$GITHUB_OUTPUT"
-            if [ -z "${{ secrets.DRUGBANK_DB_TOKEN }}" ]; then
-              echo "::notice::DRUGBANK_DB_TOKEN is unset; Docker build will try unauthenticated GitHub release download. Configure a token for private or rate-limited DB repos."
-            fi
           fi
 
   unit-tests:

@@ -94,7 +94,7 @@ These rules are authoritative for AI agents working in this repository.
 2. The deployer identity should use Workload Identity Federation, not long-lived JSON keys.
 3. Set `CLOUD_RUN_SERVICE_ACCOUNT` when runtime should use an account other than the default `deploy-sa@<project>.iam.gserviceaccount.com`.
 4. Set `DRUGBANK_DB_REPO` explicitly to a maintained GitHub release repo that publishes `drugbank.db`; do not rely on `openpharma-org/drugbank-mcp-server` as a default DB release source.
-5. Keep `DRUGBANK_DB_TAG` pinned and configure `DRUGBANK_DB_TOKEN` when the DB release asset is private or rate-limited.
+5. Keep `DRUGBANK_DB_TAG` pinned and configure `DRUGBANK_DB_TOKEN` before enabling CI image builds or Cloud Run deploys for the explicit DB release source.
 6. Do not store GCP credentials in the repository.
 7. Current alternatives check: `genomoncology/biomcp`, `googlarz/health-skill`, and `maziyarpanahi/openmed` do not replace DrugBank interaction data; they are literature/health-tracking/NLP tools rather than maintained drug-drug interaction databases.
 
