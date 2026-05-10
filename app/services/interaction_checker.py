@@ -1,4 +1,4 @@
-"""Interaction checker — looks up drug pairs via DrugBank MCP server."""
+"""Interaction checker — looks up drug pairs via DrugBank SQLite."""
 
 import asyncio
 import logging

@@ -26,7 +26,7 @@
     "/health/data": {
       "get": {
         "summary": "Data Health Check",
-        "description": "Check the status of the medication interaction database.",
+        "description": "Check the status of the drug interaction data source.",
         "operationId": "data_health_check_health_data_get",
         "responses": {
           "200": {
@@ -115,14 +115,48 @@
           }
         }
       }
+    },
+    "/admin/cache/clear": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Clear Cache",
+        "description": "Clear all in-memory caches. Requires API key authentication.",
+        "operationId": "clear_cache_admin_cache_clear_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AnalyzeDataSources": {
+        "properties": {
+          "ner_model": {
+            "type": "string",
+            "title": "Ner Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ner_model"
+        ],
+        "title": "AnalyzeDataSources"
+      },
       "AnalyzeRequest": {
         "properties": {
           "text": {
             "type": "string",
+            "maxLength": 5000,
             "minLength": 1,
             "title": "Text",
             "examples": [
@@ -148,6 +182,27 @@
           "raw_text": {
             "type": "string",
             "title": "Raw Text"
+          },
+          "data_sources": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzeDataSources"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           }
         },
         "type": "object",
@@ -203,6 +258,11 @@
           "confidence": {
             "type": "number",
             "title": "Confidence"
+          },
+          "needs_confirmation": {
+            "type": "boolean",
+            "title": "Needs Confirmation",
+            "default": false
           }
         },
         "type": "object",
@@ -250,6 +310,11 @@
           "management": {
             "type": "string",
             "title": "Management"
+          },
+          "uncertain": {
+            "type": "boolean",
+            "title": "Uncertain",
+            "default": false
           }
         },
         "type": "object",
@@ -262,11 +327,37 @@
         ],
         "title": "InteractionResult"
       },
+      "InteractionsDataSources": {
+        "properties": {
+          "drugbank_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drugbank Version"
+          },
+          "severity_classifier": {
+            "type": "string",
+            "title": "Severity Classifier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "severity_classifier"
+        ],
+        "title": "InteractionsDataSources"
+      },
       "InteractionsRequest": {
         "properties": {
           "drugs": {
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1
             },
             "type": "array",
             "minItems": 2,
@@ -295,8 +386,49 @@
             "title": "Interactions"
           },
           "safe": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Safe"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "data_sources": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InteractionsDataSources"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Limitations",
+            "default": [
+              "Checks pairwise interactions only \u2014 multi-drug cascades are not detected",
+              "Does not account for patient-specific factors (age, weight, renal/hepatic function, genetics)",
+              "Coverage depends on DrugBank database scope (~19,800 drugs)",
+              "Not a substitute for professional medical advice"
+            ]
           }
         },
         "type": "object",

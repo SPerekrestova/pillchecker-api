@@ -1,62 +1,79 @@
-# PillChecker Infrastructure Hardening Recommendations
+# PillChecker GCP pipeline audit and hardening recommendations
 
-Following an assessment of the current CI/CD and Google Cloud Platform (GCP) setup, the following improvements are recommended to enhance security, reliability, and observability.
+This note summarizes the current GitHub Actions -> Google Cloud Run pipeline and the remaining hardening work.
 
-## 1. IAM Permissions: Principle of Least Privilege
+## Current deployment path
 
-Currently, the `deploy-sa` service account is used for both CI/CD (deployment) and runtime (execution on Cloud Run). It also has project-wide access to all secrets.
+- Workflow: `.github/workflows/ci-tests.yml`.
+- Authentication: GitHub Actions uses Workload Identity Federation when `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`, and `GCP_PROJECT_ID` are configured.
+- Image registry: `europe-west1-docker.pkg.dev/<GCP_PROJECT_ID>/pillchecker-repo/api`.
+- Runtime target: Cloud Run service `pillchecker-api` in `europe-west1`.
+- Runtime secrets: `API_KEY` and `HF_TOKEN` are mounted from Secret Manager.
+- DrugBank DB source: Docker build arg `DRUGBANK_DB_REPO`, defaulting to `openpharma-org/drugbank-mcp-server` when the secret is unset.
 
-### Recommendations:
+## 1. IAM permissions: principle of least privilege
 
-*   **Separate Service Accounts**: Split `deploy-sa` into two distinct roles:
-    *   **Deployer SA**: Used only by GitHub Actions. Permissions: `roles/run.admin`, `roles/artifactregistry.writer`, `roles/iam.serviceAccountUser` (restricted to the Runner SA).
-    *   **Runner SA**: Used only by the Cloud Run service at runtime. Permissions: `roles/logging.logWriter`, `roles/secretmanager.secretAccessor` (restricted to specific secrets).
-*   **Restrict Secret Access**: Instead of granting `roles/secretmanager.secretAccessor` at the project level, grant it only on the specific secrets the application needs (`API_KEY`, `HF_TOKEN`, `DRUGBANK_DB_REPO`).
-*   **Remove Default Service Account**: Ensure the Default Compute Service Account is not used and has no permissions, as it often has broad `Editor` access by default.
+The workflow now supports a separate runtime service account through `CLOUD_RUN_SERVICE_ACCOUNT`, falling back to `deploy-sa@<project>.iam.gserviceaccount.com` for compatibility.
 
-## 2. Cloud Run Reliability: Health Probes
+### Recommendations
 
-The current Cloud Run configuration uses a basic `tcpSocket` startup probe.
+- **Separate service accounts**:
+  - **Deployer SA**: used only by GitHub Actions. Permissions: `roles/run.admin`, `roles/artifactregistry.writer`, and `roles/iam.serviceAccountUser` restricted to the runtime SA.
+  - **Runtime SA**: used only by Cloud Run. Permissions: `roles/logging.logWriter` and `roles/secretmanager.secretAccessor` restricted to the exact runtime secrets.
+- **Restrict secret access**: grant access only to `API_KEY` and `HF_TOKEN` unless another runtime secret is intentionally added.
+- **Avoid default service accounts**: do not run the service as the Default Compute Service Account.
 
-### Recommendations:
+## 2. Cloud Run reliability: health probes
 
-*   **Switch to HTTP Probes**: Use `httpGet` probes to `/health` instead of `tcpSocket`. This ensures the application is not just listening on a port but is actually ready to handle requests.
-*   **Add Liveness Probe**: Implement a liveness probe to automatically restart the container if the Python process deadlocks or becomes unresponsive.
-*   **Example Configuration**:
-    ```yaml
-    startupProbe:
-      httpGet:
-        path: /health
-        port: 8000
-      failureThreshold: 5
-      periodSeconds: 10
-    livenessProbe:
-      httpGet:
-        path: /health
-        port: 8000
-      periodSeconds: 30
-    ```
+The current workflow deploys a container that exposes `/health`, but it does not explicitly configure HTTP startup or liveness probes.
 
-## 3. Observability: Structured Logging
+### Recommendations
+
+- Add an HTTP startup probe to `/health` so Cloud Run waits for application readiness, not just an open port.
+- Add an HTTP liveness probe to `/health` to restart unhealthy containers.
+- Keep `/health/data` for dependency-level diagnostics; do not use it as a startup probe because model and data dependencies may make startup slower.
+
+Example service-level probe configuration:
+
+```yaml
+startupProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  failureThreshold: 5
+  periodSeconds: 10
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  periodSeconds: 30
+```
+
+## 3. Observability: structured logging
 
 Audit logs are currently generated as JSON strings in `stdout`.
 
-### Recommendations:
+### Recommendations
 
-*   **Standardize Structured Logging**: Use a logging library (like `structlog` or `google-cloud-logging`) to ensure all logs, not just audit logs, are emitted as structured JSON.
-*   **Cloud Logging Integration**: Ensure `severity` levels (INFO, WARNING, ERROR) are correctly mapped to GCP Cloud Logging levels by including a `"severity"` field in the JSON payload.
-*   **Log Retention**: Ensure audit logs are retained for a period sufficient for compliance/auditing (e.g., 365 days), potentially exporting them to BigQuery for long-term analysis.
+- Standardize structured logs across application and audit logs.
+- Include a `severity` field in JSON log payloads so Cloud Logging maps levels correctly.
+- Define audit-log retention and export policy if compliance requires retention beyond the default Cloud Logging period.
 
-## 4. Container Optimization (Completed)
+## 4. Container security and dependency posture
 
-We have already improved the container security and efficiency by:
-*   Switching to a **non-root user** (`pillchecker`) in the `Dockerfile`.
-*   Replacing the Node.js-based MCP server with **direct SQLite integration**, which:
-    *   Reduced the image size (no Node.js runtime or binaries).
-    *   Eliminated child process management overhead and latency.
-    *   Removed Node-specific security vulnerabilities from the attack surface.
+Completed improvements:
 
-## 5. Network Security
+- Runtime uses the non-root `pillchecker` user in `Dockerfile`.
+- DrugBank interactions use direct SQLite integration instead of a Node.js MCP child process.
+- The production image bakes the pinned DrugBank SQLite database at build time.
 
-*   **Ingress Control**: If the API is only intended for use by a specific frontend or mobile app, consider restricting ingress to `Internal and Cloud Load Balancing` and placing a Cloud Armor policy in front of it.
-*   **Egress Control**: If the application only needs to talk to specific external APIs (like NLM or HuggingFace), consider using a VPC Service Control or a NAT Gateway with restricted egress rules.
+Remaining recommendations:
+
+- Keep `DRUGBANK_DB_TAG` pinned for reproducibility.
+- Rebuild images when the pinned DrugBank release changes.
+- Continue avoiding runtime downloads for required models and databases.
+
+## 5. Network security
+
+- If the API is only intended for a trusted frontend or mobile app, consider restricting ingress to `Internal and Cloud Load Balancing` and placing Cloud Armor in front of it.
+- If outbound access should be restricted, use controlled egress through a VPC connector/NAT and allow only required external APIs such as NLM/RxNorm and Hugging Face.

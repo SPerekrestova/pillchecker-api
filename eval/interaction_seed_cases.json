@@ -1,0 +1,46 @@
+{
+  "description": "Small curated seed set for interaction benchmark development and smoke-test alignment. These cases are not a statistically representative benchmark split.",
+  "positive_pairs": [
+    {
+      "drug_a": "warfarin",
+      "drug_b": "ibuprofen",
+      "interacts": true,
+      "severity": "major",
+      "source": "existing smoke-test seed",
+      "notes": "Anticoagulant plus NSAID bleeding-risk pair."
+    },
+    {
+      "drug_a": "phenelzine",
+      "drug_b": "fluoxetine",
+      "interacts": true,
+      "severity": "major",
+      "source": "existing smoke-test seed",
+      "notes": "MAOI plus SSRI serotonin-syndrome/contraindication pair."
+    },
+    {
+      "drug_a": "ritonavir",
+      "drug_b": "simvastatin",
+      "interacts": true,
+      "severity": "major",
+      "source": "existing smoke-test seed",
+      "notes": "CYP3A inhibition/rhabdomyolysis-risk pair."
+    },
+    {
+      "drug_a": "methotrexate",
+      "drug_b": "trimethoprim",
+      "interacts": true,
+      "severity": "major",
+      "source": "existing smoke-test seed",
+      "notes": "Bone-marrow-suppression risk pair."
+    }
+  ],
+  "known_safe_pairs": [
+    {
+      "drug_a": "acetaminophen",
+      "drug_b": "amoxicillin",
+      "interacts": false,
+      "source": "existing smoke-test seed",
+      "notes": "Used as a known-safe negative smoke case."
+    }
+  ]
+}

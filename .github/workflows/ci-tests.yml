@@ -15,10 +15,11 @@ jobs:
     steps:
       - id: check
         run: |
-          if [ "${{ secrets.WIF_PROVIDER }}" != "" ]; then
+          if [ -n "${{ secrets.WIF_PROVIDER }}" ] && [ -n "${{ secrets.WIF_SERVICE_ACCOUNT }}" ] && [ -n "${{ secrets.GCP_PROJECT_ID }}" ]; then
             echo "has-gcp=true" >> "$GITHUB_OUTPUT"
           else
             echo "has-gcp=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping GCP build/deploy because WIF_PROVIDER, WIF_SERVICE_ACCOUNT, or GCP_PROJECT_ID is not configured."
           fi
 
   unit-tests:
@@ -81,7 +82,7 @@ jobs:
           push: true
           tags: ${{ env.IMAGE_TAG }}
           build-args: |
-            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
+            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO || 'openpharma-org/drugbank-mcp-server' }}
           cache-from: |
             type=registry,ref=${{ env.CACHE_TAG }}
             type=registry,ref=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:cache-main
@@ -129,7 +130,7 @@ jobs:
           else
             echo "Build job was skipped or secrets missing, building locally..."
             docker build \
-              --build-arg DRUGBANK_DB_REPO="${{ secrets.DRUGBANK_DB_REPO }}" \
+              --build-arg DRUGBANK_DB_REPO="${{ secrets.DRUGBANK_DB_REPO || 'openpharma-org/drugbank-mcp-server' }}" \
               -t pillchecker-api:ci .
           fi
 
@@ -199,7 +200,7 @@ jobs:
           image: ${{ env.IMAGE_TAG }}
           region: europe-west1
           env_vars: |
-            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO }}
+            DRUGBANK_DB_REPO=${{ secrets.DRUGBANK_DB_REPO || 'openpharma-org/drugbank-mcp-server' }}
           secrets: |
             API_KEY=API_KEY:latest
             HF_TOKEN=HF_TOKEN:latest
@@ -209,4 +210,4 @@ jobs:
             --memory=2Gi
             --cpu=1
             --concurrency=80
-            --service-account=deploy-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+            --service-account=${{ secrets.CLOUD_RUN_SERVICE_ACCOUNT || format('deploy-sa@{0}.iam.gserviceaccount.com', secrets.GCP_PROJECT_ID) }}

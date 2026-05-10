@@ -2,7 +2,7 @@
 set -e
 
 # CI Startup Script
-# BioMCP sidecar handles drug interaction data — no local DB needed.
+# DrugBank SQLite DB is baked into the image at build time.
 
 echo "[CI] Starting in CI mode."
 

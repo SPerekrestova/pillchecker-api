@@ -16,7 +16,9 @@ models/
 .DS_Store
 .claude
 docs/*
+!docs/
 !docs/openapi.json
+!docs/*.md
 .idea
 .rtk/
 
