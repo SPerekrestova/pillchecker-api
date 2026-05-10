@@ -112,6 +112,18 @@ These rules are authoritative for AI agents working in this repository.
 3. Review the 16 RxNorm non-exact ingredient candidates before updating the canonical benchmark dataset.
 4. Populate benchmark ground truth fields listed below before making stronger evaluation claims.
 
+## Next implementation after PR #55
+
+Start with the controlled DrugBank DB artifact and GCP deploy-hardening track before expanding benchmark scope. `docs/infrastructure_hardening.md` contains the detailed plan; the execution order for the next Devin session is:
+
+1. Create or choose a maintained `drugbank.db` artifact source controlled by this project, then configure GitHub Actions `DRUGBANK_DB_REPO`, pinned `DRUGBANK_DB_TAG`, and `DRUGBANK_DB_TOKEN`.
+2. Add a release preflight job that verifies the configured tag, `drugbank.db` asset, size, and checksum before Docker build.
+3. Add checksum pinning, such as `DRUGBANK_DB_SHA256`, and verify it in the download/build path.
+4. Re-enable and validate Docker image build, integration smoke tests, Cloud Run deploy, `/health`, `/health/data`, and one authenticated `/interactions` request.
+5. Add Cloud Run hardening flags: startup/liveness probes, explicit runtime service account, revision labels, and instance policy.
+6. Add post-deploy smoke tests and logging/alerting for startup failures, DrugBank connection failures, and repeated 5xx responses.
+7. After DB/deploy infrastructure is trustworthy, continue benchmark expansion from the 500 reviewed seed toward larger reviewed and weak-label stress-test splits.
+
 ## Current known issues
 
 1. Benchmark cases still need reviewed `expected_rxcuis`, `clean_text`, `expected_interactions`, and known-safe pairs.
