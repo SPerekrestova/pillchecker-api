@@ -1,0 +1,191 @@
+name: Build Interaction DB
+
+on:
+  schedule:
+    # 04:07 UTC on day 1 of each month (DDInter updates ~yearly; monthly with margin)
+    - cron: "7 4 1 * *"
+  workflow_dispatch:
+    inputs:
+      force-rebuild:
+        description: "Publish a release even if the manifest is unchanged"
+        type: boolean
+        default: false
+      use-cached-fetch:
+        description: "Skip the fetch step and reuse data/seed/ CSVs from the checkout"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-interaction-db
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.*"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Compute release tag
+        id: tag
+        run: echo "tag=ddinter-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch CSVs
+        if: ${{ !inputs.use-cached-fetch }}
+        run: uv run python -m scripts.build_ddinter_db fetch --out-dir data
+
+      - name: Seed CSVs from cache
+        if: ${{ inputs.use-cached-fetch }}
+        run: |
+          test -d data/seed || { echo "data/seed missing"; exit 1; }
+          cp data/seed/*.csv data/
+          uv run python -c "from scripts.build_ddinter_db import compute_csv_sha256, write_fetch_manifest; \
+            from scripts.ddinter_sources import CSV_FILENAMES; from pathlib import Path; \
+            files = {n: compute_csv_sha256(Path('data')/n) for n in CSV_FILENAMES if (Path('data')/n).exists()}; \
+            write_fetch_manifest(Path('data/ddinter_manifest.json'), files)"
+
+      - name: Check for changes vs previous release
+        id: dedup
+        if: ${{ !inputs.force-rebuild }}
+        run: |
+          set -e
+          prev_tag=$(gh release list --limit 100 --json tagName \
+            --jq '[.[] | select(.tagName | startswith("ddinter-"))][0].tagName' || echo "")
+          if [ -z "$prev_tag" ]; then
+            echo "no previous release; continuing"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "prev_tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh release download "$prev_tag" --pattern manifest.json --dir /tmp/prev || true
+          prev_sha=$(jq -r .manifest_sha256 /tmp/prev/manifest.json 2>/dev/null || echo "")
+          new_sha=$(jq -r .manifest_sha256 data/ddinter_manifest.json)
+          if [ "$prev_sha" = "$new_sha" ] && [ -n "$prev_sha" ]; then
+            echo "Manifest unchanged; skipping publish"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "prev_tag=$prev_tag" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Download previous crosswalk unconditionally when building, so force-rebuild
+      # can still reuse existing RxNorm mappings and avoid ~2000 redundant API calls.
+      - name: Download previous crosswalk for reuse
+        if: ${{ steps.dedup.outputs.skip != 'true' || inputs.force-rebuild }}
+        run: |
+          set -e
+          if [ -n "${{ steps.dedup.outputs.prev_tag }}" ]; then
+            gh release download "${{ steps.dedup.outputs.prev_tag }}" \
+              --pattern ddinter_crosswalk.json --dir /tmp/prev || true
+          else
+            # force-rebuild path: dedup step was skipped, find latest release directly
+            prev_tag=$(gh release list --limit 100 --json tagName \
+              --jq '[.[] | select(.tagName | startswith("ddinter-"))][0].tagName' || echo "")
+            if [ -n "$prev_tag" ]; then
+              gh release download "$prev_tag" --pattern ddinter_crosswalk.json --dir /tmp/prev || true
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve RxNorm crosswalk
+        if: ${{ steps.dedup.outputs.skip != 'true' || inputs.force-rebuild }}
+        run: |
+          PREV=""
+          if [ -f /tmp/prev/ddinter_crosswalk.json ]; then
+            PREV="--previous /tmp/prev/ddinter_crosswalk.json"
+          fi
+          uv run python -m scripts.build_ddinter_db resolve-rxnorm \
+            --csv-dir data --out-path data/ddinter_crosswalk.json \
+            --unmapped-out data/ddinter_unmapped.json $PREV
+
+      - name: Build SQLite
+        if: ${{ steps.dedup.outputs.skip != 'true' || inputs.force-rebuild }}
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          uv run python -m scripts.build_ddinter_db build \
+            --csv-dir data --crosswalk data/ddinter_crosswalk.json \
+            --manifest data/ddinter_manifest.json --out-path data/ddinter.db \
+            --tag "$RELEASE_TAG" --build-sha "$GITHUB_SHA"
+
+      - name: Sanity check
+        if: ${{ steps.dedup.outputs.skip != 'true' || inputs.force-rebuild }}
+        run: |
+          PREV_SIZE=""
+          if [ -f /tmp/prev/manifest.json ]; then
+            sz=$(jq -r .db_size_bytes /tmp/prev/manifest.json)
+            if [ "$sz" != "null" ] && [ -n "$sz" ]; then
+              PREV_SIZE="--previous-size-bytes $sz"
+            fi
+          fi
+          uv run python -m scripts.build_ddinter_db sanity-check \
+            --db-path data/ddinter.db $PREV_SIZE
+
+      - name: Write release manifest
+        if: ${{ steps.dedup.outputs.skip != 'true' || inputs.force-rebuild }}
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          uv run python <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          import sqlite3, contextlib
+          from scripts.build_ddinter_db import write_release_manifest
+
+          fetch = json.loads(Path("data/ddinter_manifest.json").read_text())
+          db = Path("data/ddinter.db")
+          db_sha = hashlib.sha256(db.read_bytes()).hexdigest()
+
+          with contextlib.closing(sqlite3.connect(db)) as con:
+              row_counts = {
+                  "interactions": con.execute("SELECT COUNT(*) FROM interactions").fetchone()[0],
+                  "rxnorm_crosswalk_exact": con.execute("SELECT COUNT(*) FROM rxnorm_to_ddinter WHERE match_method='exact'").fetchone()[0],
+                  "rxnorm_crosswalk_approximate": con.execute("SELECT COUNT(*) FROM rxnorm_to_ddinter WHERE match_method='approximate'").fetchone()[0],
+                  "rxnorm_crosswalk_manual": con.execute("SELECT COUNT(*) FROM rxnorm_to_ddinter WHERE match_method='manual'").fetchone()[0],
+              }
+              rx_fetched = con.execute("SELECT value FROM meta WHERE key='rxnorm_rest_fetched_at'").fetchone()[0]
+
+          unmapped_path = Path("data/ddinter_unmapped.json")
+          unmapped_count = json.loads(unmapped_path.read_text()).get("unmapped_count", 0) if unmapped_path.exists() else 0
+
+          write_release_manifest(
+              Path("data/manifest.json"),
+              tag=os.environ["RELEASE_TAG"],
+              csv_sha256=fetch["csv_sha256"],
+              manifest_sha256=fetch["manifest_sha256"],
+              db_sha256=db_sha,
+              db_size=db.stat().st_size,
+              row_counts=row_counts,
+              rxnorm_crosswalk_unmapped=unmapped_count,
+              rxnorm_fetched_at=rx_fetched,
+              build_sha=os.environ.get("BUILD_SHA", ""),
+          )
+          PY
+
+      - name: Publish release
+        if: ${{ steps.dedup.outputs.skip != 'true' || inputs.force-rebuild }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            data/ddinter.db data/manifest.json data/ddinter_crosswalk.json \
+            --title "$RELEASE_TAG" \
+            --notes "Auto-built DDInter SQLite + RxNorm crosswalk."
