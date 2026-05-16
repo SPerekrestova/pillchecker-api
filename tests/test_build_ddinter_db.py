@@ -70,3 +70,58 @@ def test_crosswalk_reuse_from_previous_release(tmp_path: Path):
     reused, todo = build_ddinter_db.reuse_crosswalk(prev, current)
     assert {r["ddinter_id"] for r in reused} == {"DDInter1", "DDInter2"}
     assert todo == {"DDInter3": "Ibuprofen"}
+
+
+import sqlite3
+
+
+def test_build_emits_valid_sqlite(tmp_path: Path):
+    # CSV inputs
+    (tmp_path / "ddinter_downloads_code_A.csv").write_text(
+        "DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+        "DDInter1,Aspirin,DDInter2,Warfarin,Major\n"
+        "DDInter2,Warfarin,DDInter3,Ibuprofen,Moderate\n"
+    )
+    crosswalk = tmp_path / "crosswalk.json"
+    crosswalk.write_text(json.dumps([
+        {"rxcui": "1191", "ddinter_id": "DDInter1", "canonical_name": "Aspirin",
+         "match_method": "exact", "source_name": "Aspirin"},
+        {"rxcui": "11289", "ddinter_id": "DDInter2", "canonical_name": "Warfarin",
+         "match_method": "approximate", "source_name": "Warfarin"},
+    ]))
+    manifest = tmp_path / "ddinter_manifest.json"
+    manifest.write_text(json.dumps({
+        "csv_sha256": {"ddinter_downloads_code_A.csv": "deadbeef"},
+        "manifest_sha256": "abc123",
+    }))
+
+    db_path = tmp_path / "ddinter.db"
+    build_ddinter_db.cmd_build(argparse.Namespace(
+        csv_dir=str(tmp_path),
+        crosswalk=str(crosswalk),
+        manifest=str(manifest),
+        out_path=str(db_path),
+        tag="ddinter-test",
+    ))
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = list(conn.execute("SELECT * FROM interactions ORDER BY drug_a_id, drug_b_id"))
+        assert len(rows) == 2
+        assert rows[0]["drug_a_id"] == "DDInter1"
+        assert rows[0]["severity"] == "Major"
+        # CHECK constraint on severity
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO interactions VALUES (?,?,?,?,?,?)",
+                ("X", "X-Name", "Y", "Y-Name", "Critical", "A"),
+            )
+        # FTS5 table populated with deduped names
+        fts = list(conn.execute("SELECT DISTINCT name FROM drug_names_fts ORDER BY name"))
+        names = {r["name"].lower() for r in fts}
+        assert {"aspirin", "warfarin", "ibuprofen"} <= names
+        # Meta rows
+        meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
+        assert meta["source_release"] == "ddinter-test"
+        assert "build_timestamp" in meta
+        assert meta["csv_sha256_manifest"] == "abc123"
