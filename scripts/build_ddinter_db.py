@@ -13,16 +13,17 @@ Run from the repository root: `python -m scripts.build_ddinter_db <cmd> ...`.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import datetime as _dt
 import hashlib
 import json
 import logging
-import os
 import sqlite3
 import sys
 import time
 import urllib.parse
+from collections.abc import Sequence
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -32,6 +33,8 @@ from scripts import ddinter_sources
 logger = logging.getLogger("build_ddinter_db")
 
 USER_AGENT = "pillchecker-ddinter-build"
+
+_REQUIRED_CSV_COLUMNS = {"DDInterID_A", "Drug_A", "DDInterID_B", "Drug_B", "Level"}
 
 
 def compute_csv_sha256(path: Path) -> str:
@@ -65,14 +68,21 @@ def write_fetch_manifest(path: Path, files: dict[str, str]) -> str:
 
 
 def _download(url: str, dest: Path, timeout: float = 120.0) -> None:
+    """Download url to dest atomically (write to .tmp, rename on success)."""
     req = Request(url, headers={"User-Agent": USER_AGENT})
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with urlopen(req, timeout=timeout) as resp, dest.open("wb") as out:
-        while True:
-            chunk = resp.read(1 << 20)
-            if not chunk:
-                break
-            out.write(chunk)
+    tmp = dest.with_suffix(".tmp")
+    try:
+        with urlopen(req, timeout=timeout) as resp, tmp.open("wb") as out:
+            while True:
+                chunk = resp.read(1 << 20)
+                if not chunk:
+                    break
+                out.write(chunk)
+        tmp.replace(dest)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def cmd_fetch(args: argparse.Namespace) -> int:
@@ -94,19 +104,29 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
+def _validate_csv_headers(fieldnames: Sequence[str] | None, filename: str) -> None:
+    """Raise ValueError if required columns are absent."""
+    present = set(fieldnames or [])
+    missing = _REQUIRED_CSV_COLUMNS - present
+    if missing:
+        raise ValueError(f"{filename}: missing columns {sorted(missing)!r}; got {sorted(present)!r}")
+
+
 def collect_unique_drug_names(csv_dir: Path) -> dict[str, str]:
     """Walk every DDInter CSV in csv_dir and return {ddinter_id: name}.
 
     If a single id appears with multiple name spellings across files, the
     first spelling encountered wins (deterministic over sorted filenames).
+    Opens with utf-8-sig to strip any BOM.
     """
     seen: dict[str, str] = {}
     for filename in sorted(ddinter_sources.CSV_FILENAMES):
         path = csv_dir / filename
         if not path.exists():
             continue
-        with path.open(newline="", encoding="utf-8") as fh:
+        with path.open(newline="", encoding="utf-8-sig") as fh:
             reader = csv.DictReader(fh)
+            _validate_csv_headers(reader.fieldnames, filename)
             for row in reader:
                 for id_col, name_col in (("DDInterID_A", "Drug_A"), ("DDInterID_B", "Drug_B")):
                     did = (row.get(id_col) or "").strip()
@@ -140,25 +160,46 @@ def reuse_crosswalk(
 _RXNORM_BASE = "https://rxnav.nlm.nih.gov/REST"
 
 
-def _rxnorm_get(path: str, params: dict[str, str], timeout: float = 10.0) -> dict:
+def _rxnorm_get(path: str, params: dict[str, str], timeout: float = 10.0, *, max_retries: int = 3) -> dict:
+    """GET from RxNorm REST API with 429/Retry-After handling."""
     query = urllib.parse.urlencode(params)
     url = f"{_RXNORM_BASE}{path}?{query}"
     req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
+    for attempt in range(max_retries):
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read())
+        except HTTPError as exc:
+            if exc.code == 429 and attempt < max_retries - 1:
+                retry_after = float(exc.headers.get("Retry-After") or 60)
+                logger.warning("RxNorm 429; sleeping %.0fs (Retry-After)", retry_after)
+                time.sleep(retry_after)
+            else:
+                raise
+    raise RuntimeError("unreachable")  # noqa: EM101
 
 
-def resolve_via_rxnorm(name: str) -> tuple[str | None, str | None, str] | None:
+def resolve_via_rxnorm(
+    name: str,
+    *,
+    per_request_delay: float = 0.0,
+) -> tuple[str | None, str | None, str] | None:
     """Resolve a drug name via RxNorm.
 
-    Returns (rxcui, canonical_name, match_method) where match_method is one
-    of {"exact", "approximate"}. Returns None if no match is found.
+    Sleeps per_request_delay before each HTTP call so the caller can enforce
+    a per-request ceiling (not per-name, since up to 2 calls are made).
+
+    Returns (rxcui, canonical_name, match_method) or None.
     """
+    if per_request_delay:
+        time.sleep(per_request_delay)
     exact = _rxnorm_get("/rxcui.json", {"name": name, "search": "2"})
     rxcui_list = exact.get("idGroup", {}).get("rxnormId") or []
     if rxcui_list:
         return rxcui_list[0], name, "exact"
 
+    if per_request_delay:
+        time.sleep(per_request_delay)
     approx = _rxnorm_get("/approximateTerm.json", {"term": name, "maxEntries": "1"})
     candidates = approx.get("approximateGroup", {}).get("candidate", [])
     if candidates:
@@ -169,17 +210,17 @@ def resolve_via_rxnorm(name: str) -> tuple[str | None, str | None, str] | None:
     return None
 
 
-def _load_overrides() -> dict[str, dict[str, str]]:
-    """Manual rxcui overrides from data/rxnorm_overrides.json (gitignored)."""
-    path = Path("data/rxnorm_overrides.json")
-    if not path.exists():
+def _load_overrides(overrides_path: Path) -> dict[str, dict[str, str]]:
+    """Manual rxcui overrides from a JSON file (gitignored by convention)."""
+    if not overrides_path.exists():
         return {}
-    return json.loads(path.read_text())
+    return json.loads(overrides_path.read_text())
 
 
 def cmd_resolve_rxnorm(args: argparse.Namespace) -> int:
     csv_dir = Path(args.csv_dir)
     out_path = Path(args.out_path)
+    unmapped_out = Path(args.unmapped_out)
     prev_path = Path(args.previous) if args.previous else None
 
     current_names = collect_unique_drug_names(csv_dir)
@@ -189,9 +230,10 @@ def cmd_resolve_rxnorm(args: argparse.Namespace) -> int:
     reused, todo = reuse_crosswalk(prev_rows, current_names)
     logger.info("Crosswalk reuse: %d reused, %d to resolve", len(reused), len(todo))
 
-    overrides = _load_overrides()
+    overrides = _load_overrides(Path(args.overrides))
     rows: list[dict] = list(reused)
-    rate_limit_seconds = 1.0 / max(args.rate_per_second, 1)
+    per_request_delay = 1.0 / max(args.rate_per_second, 1)
+    unmapped_names: list[dict[str, str]] = []
 
     for did, name in sorted(todo.items()):
         if did in overrides:
@@ -204,14 +246,14 @@ def cmd_resolve_rxnorm(args: argparse.Namespace) -> int:
                 "source_name": name,
             })
             continue
-        time.sleep(rate_limit_seconds)
         try:
-            resolved = resolve_via_rxnorm(name)
+            resolved = resolve_via_rxnorm(name, per_request_delay=per_request_delay)
         except (HTTPError, URLError) as exc:
             logger.warning("RxNorm failed for %s (%s): %s", name, did, exc)
             resolved = None
         if resolved is None:
             logger.info("Unmapped: %s (%s)", name, did)
+            unmapped_names.append({"ddinter_id": did, "name": name})
             continue
         rxcui, canonical, method = resolved
         rows.append({
@@ -222,9 +264,15 @@ def cmd_resolve_rxnorm(args: argparse.Namespace) -> int:
             "source_name": name,
         })
 
+    unmapped_count = len(unmapped_names)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(rows, indent=2, sort_keys=True))
-    logger.info("Wrote %s (%d rows; %d unmapped)", out_path, len(rows), len(todo) - (len(rows) - len(reused)))
+    unmapped_out.parent.mkdir(parents=True, exist_ok=True)
+    unmapped_out.write_text(json.dumps({"unmapped_count": unmapped_count, "names": unmapped_names}, indent=2))
+    logger.info(
+        "Wrote %s (%d mapped, %d unmapped)",
+        out_path, len(rows), unmapped_count,
+    )
     return 0
 
 
@@ -260,13 +308,22 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 
 def _iter_interaction_rows(csv_dir: Path):
+    """Yield canonical (a_id, a_name, b_id, b_name, severity, category) tuples.
+
+    Deduplicates pairs across CSVs: first-encountered severity wins.
+    Warns when the same pair appears with a conflicting severity in a later CSV.
+    Opens CSVs with utf-8-sig to strip BOM.
+    """
+    # key=(min_id, max_id) -> (a_id, a_name, b_id, b_name, severity, category, source_file)
+    seen: dict[tuple[str, str], tuple] = {}
     for filename in sorted(ddinter_sources.CSV_FILENAMES):
         path = csv_dir / filename
         if not path.exists():
             continue
         category = ddinter_sources.atc_category(filename)
-        with path.open(newline="", encoding="utf-8") as fh:
+        with path.open(newline="", encoding="utf-8-sig") as fh:
             reader = csv.DictReader(fh)
+            _validate_csv_headers(reader.fieldnames, filename)
             for row in reader:
                 a_id = (row.get("DDInterID_A") or "").strip()
                 a_name = (row.get("Drug_A") or "").strip()
@@ -275,11 +332,22 @@ def _iter_interaction_rows(csv_dir: Path):
                 severity = (row.get("Level") or "").strip()
                 if not (a_id and b_id and severity):
                     continue
-                # Canonicalise ordering: (min,max) by ddinter_id so the pair
-                # has a single row regardless of CSV source.
+                # Canonical ordering so (A,B) and (B,A) map to the same key.
                 if a_id > b_id:
                     a_id, a_name, b_id, b_name = b_id, b_name, a_id, a_name
-                yield (a_id, a_name, b_id, b_name, severity, category)
+                key = (a_id, b_id)
+                if key in seen:
+                    prev = seen[key]
+                    if prev[4] != severity:
+                        logger.warning(
+                            "Severity conflict for %s+%s: keeping %s (from %s), ignoring %s (from %s)",
+                            a_id, b_id, prev[4], prev[6], severity, filename,
+                        )
+                else:
+                    seen[key] = (a_id, a_name, b_id, b_name, severity, category, filename)
+
+    for row in seen.values():
+        yield row[:6]  # strip the internal source_file field
 
 
 def cmd_build(args: argparse.Namespace) -> int:
@@ -291,37 +359,35 @@ def cmd_build(args: argparse.Namespace) -> int:
     if out.exists():
         out.unlink()
 
-    with sqlite3.connect(out) as conn:
+    with contextlib.closing(sqlite3.connect(out)) as conn:
         conn.executescript(_SCHEMA_SQL)
 
-        # interactions (INSERT OR IGNORE so duplicate pairs across CSVs are absorbed)
         conn.executemany(
             "INSERT OR IGNORE INTO interactions VALUES (?, ?, ?, ?, ?, ?)",
             list(_iter_interaction_rows(csv_dir)),
         )
 
-        # crosswalk
         conn.executemany(
             "INSERT INTO rxnorm_to_ddinter (rxcui, ddinter_id, canonical_name, match_method) VALUES (?, ?, ?, ?)",
             [(r["rxcui"], r["ddinter_id"], r["canonical_name"], r["match_method"]) for r in crosswalk],
         )
 
-        # FTS5: deduped union of interactions names + crosswalk canonical
-        seen: set[tuple[str, str]] = set()
+        # FTS5: deduped union of interaction names + crosswalk canonical names
+        name_seen: set[tuple[str, str]] = set()
         for did, name in conn.execute("SELECT drug_a_id, drug_a_name FROM interactions"):
             key = (did, name.lower())
-            if key not in seen:
-                seen.add(key)
+            if key not in name_seen:
+                name_seen.add(key)
                 conn.execute("INSERT INTO drug_names_fts (ddinter_id, name) VALUES (?, ?)", (did, name))
         for did, name in conn.execute("SELECT drug_b_id, drug_b_name FROM interactions"):
             key = (did, name.lower())
-            if key not in seen:
-                seen.add(key)
+            if key not in name_seen:
+                name_seen.add(key)
                 conn.execute("INSERT INTO drug_names_fts (ddinter_id, name) VALUES (?, ?)", (did, name))
         for row in crosswalk:
             key = (row["ddinter_id"], row["canonical_name"].lower())
-            if key not in seen:
-                seen.add(key)
+            if key not in name_seen:
+                name_seen.add(key)
                 conn.execute(
                     "INSERT INTO drug_names_fts (ddinter_id, name) VALUES (?, ?)",
                     (row["ddinter_id"], row["canonical_name"]),
@@ -341,7 +407,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         }
 
         now = _dt.datetime.now(_dt.timezone.utc).isoformat()
-        meta_rows = {
+        meta_rows: dict[str, str] = {
             "source_release": args.tag,
             "build_timestamp": now,
             "csv_sha256_manifest": manifest.get("manifest_sha256", ""),
@@ -352,6 +418,9 @@ def cmd_build(args: argparse.Namespace) -> int:
             "row_count_crosswalk_manual": str(row_counts["rxnorm_crosswalk_manual"]),
             "rxnorm_rest_fetched_at": now,
         }
+        build_sha = getattr(args, "build_sha", "") or ""
+        if build_sha:
+            meta_rows["build_sha"] = build_sha
         conn.executemany(
             "INSERT INTO meta (key, value) VALUES (?, ?)",
             list(meta_rows.items()),
@@ -371,7 +440,7 @@ def sanity_check(
     previous_size_bytes: int | None,
     size_drift_tolerance: float = 0.20,
 ) -> bool:
-    with sqlite3.connect(db_path) as conn:
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT COUNT(*) FROM interactions").fetchone()[0]
         if rows < min_rows:
@@ -422,8 +491,11 @@ def write_release_manifest(
     db_sha256: str,
     db_size: int,
     row_counts: dict[str, int],
+    rxnorm_crosswalk_unmapped: int = 0,
     rxnorm_fetched_at: str,
+    build_sha: str = "",
 ) -> None:
+    # Attribution: Zhang Y, et al. DDInter 2.0 (2023). Verify citation before first release.
     payload = {
         "tag": tag,
         "ddinter_source": ddinter_sources.DDINTER_BASE_URL,
@@ -432,11 +504,13 @@ def write_release_manifest(
         "manifest_sha256": manifest_sha256,
         "db_sha256": db_sha256,
         "db_size_bytes": db_size,
-        "row_counts": row_counts,
+        "row_counts": {**row_counts, "rxnorm_crosswalk_unmapped": rxnorm_crosswalk_unmapped},
         "license": "CC BY-NC-SA 4.0",
         "attribution": "Zhang Y, et al. DDInter 2.0: an updated comprehensive database for drug-drug interactions. (CC BY-NC-SA 4.0)",
         "rxnorm_rest_fetched_at": rxnorm_fetched_at,
     }
+    if build_sha:
+        payload["build_sha"] = build_sha
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
 
@@ -452,8 +526,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rx = sub.add_parser("resolve-rxnorm", help="Build the RxNorm crosswalk")
     p_rx.add_argument("--csv-dir", default="data")
     p_rx.add_argument("--out-path", default="data/ddinter_crosswalk.json")
-    p_rx.add_argument("--previous", default=None, help="Path to previous release's crosswalk JSON")
-    p_rx.add_argument("--rate-per-second", type=int, default=15)
+    p_rx.add_argument("--unmapped-out", default="data/ddinter_unmapped.json",
+                      help="Sidecar JSON listing unmapped drug names")
+    p_rx.add_argument("--previous", default=None, help="Path to previous release crosswalk JSON")
+    p_rx.add_argument("--overrides", default="data/rxnorm_overrides.json",
+                      help="Path to manual rxcui overrides JSON (need not exist)")
+    p_rx.add_argument("--rate-per-second", type=int, default=15,
+                      help="Max RxNorm HTTP requests per second (each drug name uses up to 2 calls)")
     p_rx.set_defaults(func=cmd_resolve_rxnorm)
 
     p_build = sub.add_parser("build", help="Emit ddinter.db from CSVs + crosswalk")
@@ -462,6 +541,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_build.add_argument("--manifest", default="data/ddinter_manifest.json")
     p_build.add_argument("--out-path", default="data/ddinter.db")
     p_build.add_argument("--tag", required=True, help="Release tag (e.g. ddinter-2026-05-15)")
+    p_build.add_argument("--build-sha", default="", help="Git commit SHA for provenance (optional)")
     p_build.set_defaults(func=cmd_build)
 
     p_check = sub.add_parser("sanity-check", help="Validate emitted SQLite")

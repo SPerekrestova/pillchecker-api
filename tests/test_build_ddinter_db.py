@@ -176,3 +176,103 @@ def test_sanity_check_fails_if_size_drift_too_large(tmp_path: Path):
         previous_size_bytes=actual_size * 10,
     )
     assert ok is False
+
+
+# --- Severity conflict detection ---
+
+def test_severity_conflict_warns_and_keeps_first(tmp_path: Path, caplog):
+    """Same pair in two CSVs with different Level: first wins, warning emitted."""
+    (tmp_path / "ddinter_downloads_code_A.csv").write_text(
+        "DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+        "DDInter1,Aspirin,DDInter2,Warfarin,Major\n"
+    )
+    (tmp_path / "ddinter_downloads_code_B.csv").write_text(
+        "DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+        "DDInter1,Aspirin,DDInter2,Warfarin,Minor\n"  # same pair, different Level
+    )
+    import logging
+    with caplog.at_level(logging.WARNING, logger="build_ddinter_db"):
+        rows = list(build_ddinter_db._iter_interaction_rows(tmp_path))
+    assert len(rows) == 1
+    assert rows[0][4] == "Major"  # severity index = 4
+    assert any("Severity conflict" in r.message for r in caplog.records)
+
+
+# --- Empty CSV ---
+
+def test_empty_csv_no_data_rows(tmp_path: Path):
+    """CSV with header only (no data) produces no interactions."""
+    (tmp_path / "ddinter_downloads_code_A.csv").write_text(
+        "DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+    )
+    names = build_ddinter_db.collect_unique_drug_names(tmp_path)
+    assert names == {}
+    rows = list(build_ddinter_db._iter_interaction_rows(tmp_path))
+    assert rows == []
+
+
+# --- Missing CSV silently skipped ---
+
+def test_missing_csv_file_skipped(tmp_path: Path):
+    """CSV files absent from disk are silently skipped."""
+    # Write only the B category; A is missing
+    (tmp_path / "ddinter_downloads_code_B.csv").write_text(
+        "DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+        "DDInter1,Aspirin,DDInter2,Warfarin,Major\n"
+    )
+    names = build_ddinter_db.collect_unique_drug_names(tmp_path)
+    assert "DDInter1" in names
+
+
+# --- BOM-prefixed CSV ---
+
+def test_csv_with_bom_parses_correctly(tmp_path: Path):
+    """CSVs starting with UTF-8 BOM are read without BOM in column names."""
+    bom = "﻿"
+    (tmp_path / "ddinter_downloads_code_A.csv").write_text(
+        f"{bom}DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+        "DDInter1,Aspirin,DDInter2,Warfarin,Major\n",
+        encoding="utf-8",
+    )
+    names = build_ddinter_db.collect_unique_drug_names(tmp_path)
+    assert "DDInter1" in names
+
+
+# --- Invalid CSV headers ---
+
+def test_missing_required_column_raises(tmp_path: Path):
+    """CSV missing a required column raises ValueError."""
+    (tmp_path / "ddinter_downloads_code_A.csv").write_text(
+        "DDInterID_A,Drug_A,Drug_B,Level\n"  # missing DDInterID_B
+        "DDInter1,Aspirin,Warfarin,Major\n"
+    )
+    with pytest.raises(ValueError, match="missing columns"):
+        build_ddinter_db.collect_unique_drug_names(tmp_path)
+
+
+# --- INSERT OR IGNORE collision in cmd_build ---
+
+def test_build_handles_cross_csv_severity_conflict(tmp_path: Path):
+    """cmd_build emits one row per pair; conflict is pre-resolved in Python."""
+    (tmp_path / "ddinter_downloads_code_A.csv").write_text(
+        "DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+        "DDInter1,Aspirin,DDInter2,Warfarin,Major\n"
+    )
+    (tmp_path / "ddinter_downloads_code_B.csv").write_text(
+        "DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+        "DDInter1,Aspirin,DDInter2,Warfarin,Minor\n"  # same pair, different Level
+    )
+    crosswalk = tmp_path / "crosswalk.json"
+    crosswalk.write_text("[]")
+    manifest = tmp_path / "ddinter_manifest.json"
+    manifest.write_text(json.dumps({"csv_sha256": {}, "manifest_sha256": "x"}))
+    db_path = tmp_path / "ddinter.db"
+    build_ddinter_db.cmd_build(argparse.Namespace(
+        csv_dir=str(tmp_path), crosswalk=str(crosswalk),
+        manifest=str(manifest), out_path=str(db_path), tag="ddinter-test",
+    ))
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT COUNT(*) FROM interactions").fetchone()[0]
+        assert rows == 1
+        severity = conn.execute("SELECT severity FROM interactions").fetchone()[0]
+        assert severity == "Major"  # first encountered wins
