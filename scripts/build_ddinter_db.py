@@ -35,7 +35,8 @@ logger = logging.getLogger("build_ddinter_db")
 USER_AGENT = "pillchecker-ddinter-build"
 
 _REQUIRED_CSV_COLUMNS = {"DDInterID_A", "Drug_A", "DDInterID_B", "Drug_B", "Level"}
-DEFAULT_MIN_INTERACTION_ROWS = 100_000
+DEFAULT_MIN_INTERACTION_ROWS = 150_000
+DEFAULT_SENTINEL_PAIR = ("Warfarin", "Acetylsalicylic acid")
 
 
 def compute_csv_sha256(path: Path) -> str:
@@ -283,7 +284,7 @@ CREATE TABLE interactions (
     drug_a_name  TEXT NOT NULL,
     drug_b_id    TEXT NOT NULL,
     drug_b_name  TEXT NOT NULL,
-    severity     TEXT NOT NULL CHECK (severity IN ('Minor','Moderate','Major')),
+    severity     TEXT NOT NULL CHECK (severity IN ('Minor','Moderate','Major','Unknown')),
     atc_category TEXT NOT NULL,
     PRIMARY KEY (drug_a_id, drug_b_id)
 );
@@ -389,7 +390,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         conn.executescript(_SCHEMA_SQL)
 
         conn.executemany(
-            "INSERT OR IGNORE INTO interactions VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO interactions VALUES (?, ?, ?, ?, ?, ?)",
             list(_iter_interaction_rows(csv_dir)),
         )
 
@@ -461,7 +462,7 @@ def sanity_check(
     db_path: Path,
     *,
     min_rows: int = DEFAULT_MIN_INTERACTION_ROWS,
-    sentinel: tuple[str, str] = ("Warfarin", "Aspirin"),
+    sentinel: tuple[str, str] = DEFAULT_SENTINEL_PAIR,
     expected_severity: str = "Major",
     previous_size_bytes: int | None,
     size_drift_tolerance: float = 0.20,
@@ -573,7 +574,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_check = sub.add_parser("sanity-check", help="Validate emitted SQLite")
     p_check.add_argument("--db-path", required=True)
     p_check.add_argument("--min-rows", type=int, default=DEFAULT_MIN_INTERACTION_ROWS)
-    p_check.add_argument("--sentinel", nargs=2, default=["Warfarin", "Aspirin"])
+    p_check.add_argument("--sentinel", nargs=2, default=list(DEFAULT_SENTINEL_PAIR))
     p_check.add_argument("--expected-severity", default="Major")
     p_check.add_argument("--previous-size-bytes", type=int, default=None)
     p_check.set_defaults(func=cmd_sanity_check)

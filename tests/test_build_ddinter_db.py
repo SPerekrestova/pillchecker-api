@@ -160,6 +160,28 @@ def test_build_dedupes_duplicate_rxcuis(tmp_path: Path, caplog):
     assert any("Duplicate RxCUI 1191" in r.message for r in caplog.records)
 
 
+def test_build_preserves_ddinter_unknown_severity(tmp_path: Path):
+    """DDInter uses Unknown as a source severity; keep it instead of dropping it."""
+    (tmp_path / "ddinter_downloads_code_A.csv").write_text(
+        "DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+        "DDInter1,Drug A,DDInter2,Drug B,Unknown\n"
+    )
+    crosswalk = tmp_path / "crosswalk.json"
+    crosswalk.write_text("[]")
+    manifest = tmp_path / "ddinter_manifest.json"
+    manifest.write_text(json.dumps({"csv_sha256": {}, "manifest_sha256": "x"}))
+    db_path = tmp_path / "ddinter.db"
+
+    build_ddinter_db.cmd_build(argparse.Namespace(
+        csv_dir=str(tmp_path), crosswalk=str(crosswalk),
+        manifest=str(manifest), out_path=str(db_path), tag="ddinter-test",
+    ))
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT severity FROM interactions").fetchall()
+    assert rows == [("Unknown",)]
+
+
 def _build_minimal_db(tmp_path: Path, *, rows: int = 2, severity_for_sentinel: str = "Major") -> Path:
     csv = tmp_path / "ddinter_downloads_code_A.csv"
     lines = ["DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level"]
@@ -213,7 +235,12 @@ def test_sanity_check_fails_if_size_drift_too_large(tmp_path: Path):
 
 def test_sanity_check_cli_default_row_floor_tracks_current_ddinter_release():
     args = build_ddinter_db._build_parser().parse_args(["sanity-check", "--db-path", "data/ddinter.db"])
-    assert args.min_rows == 100_000
+    assert args.min_rows == 150_000
+
+
+def test_sanity_check_cli_default_sentinel_uses_current_ddinter_pair():
+    args = build_ddinter_db._build_parser().parse_args(["sanity-check", "--db-path", "data/ddinter.db"])
+    assert args.sentinel == ["Warfarin", "Acetylsalicylic acid"]
 
 
 # --- Severity conflict detection ---
