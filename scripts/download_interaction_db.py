@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download the pinned DrugBank SQLite release asset from GitHub."""
+"""Download the pinned DDInter SQLite release asset from a GitHub release."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 USER_AGENT = "pillchecker-api-build"
-DEFAULT_ASSET = "drugbank.db"
+DEFAULT_ASSET = "ddinter.db"
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -91,15 +91,15 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
-    token = os.environ.get("DRUGBANK_DB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    # Public release; token is optional and only raises GitHub API limits.
+    token = os.environ.get("GITHUB_TOKEN")
     try:
         release = _load_release(args.repo, args.tag, token)
         asset_url = _find_asset_url(release, args.asset)
         _download_asset(asset_url, Path(args.output), token)
     except HTTPError as exc:
-        auth_hint = " with GitHub authentication" if token else " without GitHub authentication"
         raise SystemExit(
-            f"Failed to download {args.asset} from {args.repo}@{args.tag}{auth_hint}: HTTP {exc.code}"
+            f"Failed to download {args.asset} from {args.repo}@{args.tag}: HTTP {exc.code}"
         ) from exc
 
 

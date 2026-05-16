@@ -17,20 +17,21 @@ RUN uv sync --no-dev
 # --- DB downloader stage ---
 FROM python:3.12-slim AS db-downloader
 
-WORKDIR /app/drugbank-mcp-server/data
+WORKDIR /app/data
 
-# Download a pinned version of the pre-built SQLite DB from an explicit release source.
-# Pinning the tag ensures deterministic builds and allows Docker to cache this layer reliably.
-ARG DRUGBANK_DB_REPO
-ARG DRUGBANK_DB_TAG=db-2026-04-01
-COPY scripts/download_drugbank_db.py /tmp/download_drugbank_db.py
+# Download a pinned DDInter SQLite DB from the project's release source.
+ARG INTERACTION_DB_REPO
+ARG INTERACTION_DB_TAG
+COPY scripts/download_interaction_db.py /tmp/download_interaction_db.py
 RUN --mount=type=secret,id=github_token,required=false \
-    test -n "${DRUGBANK_DB_REPO}" || { echo "DRUGBANK_DB_REPO build arg is required"; exit 1; }; \
+    test -n "${INTERACTION_DB_REPO}" || { echo "INTERACTION_DB_REPO build arg is required"; exit 1; }; \
+    test -n "${INTERACTION_DB_TAG}" || { echo "INTERACTION_DB_TAG build arg is required"; exit 1; }; \
     if [ -f /run/secrets/github_token ]; then export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; fi; \
-    python /tmp/download_drugbank_db.py \
-      --repo "${DRUGBANK_DB_REPO}" \
-      --tag "${DRUGBANK_DB_TAG}" \
-      --output drugbank.db
+    python /tmp/download_interaction_db.py \
+      --repo "${INTERACTION_DB_REPO}" \
+      --tag "${INTERACTION_DB_TAG}" \
+      --asset ddinter.db \
+      --output ddinter.db
 
 # --- Runtime stage ---
 FROM python:3.12-slim
@@ -40,12 +41,13 @@ WORKDIR /app
 # Copy built virtualenv from builder
 COPY --from=builder /app/.venv /app/.venv
 
-# Copy DrugBank SQLite DB from downloader stage
-COPY --from=db-downloader /app/drugbank-mcp-server/data /app/drugbank-mcp-server/data
+# Copy DDInter SQLite DB from downloader stage
+COPY --from=db-downloader /app/data /app/data
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV HF_HOME=/app/models
 ENV TRANSFORMERS_CACHE=/app/models
+ENV INTERACTION_DB_PATH=/app/data/ddinter.db
 
 # Pre-download NER model so the image is self-contained.
 # Layer is cached until venv or model ID changes.
