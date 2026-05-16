@@ -127,6 +127,39 @@ def test_build_emits_valid_sqlite(tmp_path: Path):
         assert meta["csv_sha256_manifest"] == "abc123"
 
 
+def test_build_dedupes_duplicate_rxcuis(tmp_path: Path, caplog):
+    """Live RxNorm resolution can map multiple DDInter ids to one RxCUI."""
+    (tmp_path / "ddinter_downloads_code_A.csv").write_text(
+        "DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level\n"
+        "DDInter1,Brand Aspirin,DDInter2,Warfarin,Major\n"
+    )
+    crosswalk = tmp_path / "crosswalk.json"
+    crosswalk.write_text(json.dumps([
+        {"rxcui": "1191", "ddinter_id": "DDInter1", "canonical_name": "Aspirin",
+         "match_method": "approximate", "source_name": "Brand Aspirin"},
+        {"rxcui": "1191", "ddinter_id": "DDInter99", "canonical_name": "Aspirin",
+         "match_method": "approximate", "source_name": "Aspirin duplicate"},
+    ]))
+    manifest = tmp_path / "ddinter_manifest.json"
+    manifest.write_text(json.dumps({"csv_sha256": {}, "manifest_sha256": "x"}))
+    db_path = tmp_path / "ddinter.db"
+
+    import logging
+    with caplog.at_level(logging.WARNING, logger="build_ddinter_db"):
+        build_ddinter_db.cmd_build(argparse.Namespace(
+            csv_dir=str(tmp_path),
+            crosswalk=str(crosswalk),
+            manifest=str(manifest),
+            out_path=str(db_path),
+            tag="ddinter-test",
+        ))
+
+    with sqlite3.connect(db_path) as conn:
+        rows = list(conn.execute("SELECT rxcui, ddinter_id FROM rxnorm_to_ddinter"))
+    assert rows == [("1191", "DDInter1")]
+    assert any("Duplicate RxCUI 1191" in r.message for r in caplog.records)
+
+
 def _build_minimal_db(tmp_path: Path, *, rows: int = 2, severity_for_sentinel: str = "Major") -> Path:
     csv = tmp_path / "ddinter_downloads_code_A.csv"
     lines = ["DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level"]
