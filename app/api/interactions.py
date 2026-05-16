@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.schemas import InteractionsDataSources, InteractionsRequest, InteractionsResponse
+from app.api.schemas import DDInterDataSource, InteractionsDataSources, InteractionsRequest, InteractionsResponse
 from app.nlp import severity_classifier
 from app.services import interaction_checker
 
@@ -19,6 +19,11 @@ async def check_interactions(request: Request, body: InteractionsRequest):
     return InteractionsResponse(
         **result,
         data_sources=InteractionsDataSources(
+            ddinter=DDInterDataSource(
+                version="2.0",
+                license="CC BY-NC-SA 4.0",
+                attribution_url="https://ddinter2.scbdd.com/",
+            ),
             severity_classifier=severity_classifier.MODEL_ID,
         ),
     )
