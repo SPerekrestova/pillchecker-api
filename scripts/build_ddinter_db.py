@@ -350,9 +350,34 @@ def _iter_interaction_rows(csv_dir: Path):
         yield row[:6]  # strip the internal source_file field
 
 
+def _dedupe_crosswalk_rows(crosswalk: list[dict]) -> list[dict]:
+    """Return crosswalk rows with at most one DDInter mapping per RxCUI.
+
+    RxNorm can resolve brand/synonym DDInter names to the same concept. The
+    SQLite schema keys by RxCUI, so keep the first deterministic row from the
+    JSON input and warn about later aliases.
+    """
+    by_rxcui: dict[str, dict] = {}
+    for row in crosswalk:
+        rxcui = row["rxcui"]
+        if rxcui in by_rxcui:
+            kept = by_rxcui[rxcui]
+            logger.warning(
+                "Duplicate RxCUI %s: keeping %s (%s), ignoring %s (%s)",
+                rxcui,
+                kept["ddinter_id"],
+                kept["source_name"],
+                row["ddinter_id"],
+                row["source_name"],
+            )
+            continue
+        by_rxcui[rxcui] = row
+    return list(by_rxcui.values())
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     csv_dir = Path(args.csv_dir)
-    crosswalk = json.loads(Path(args.crosswalk).read_text())
+    crosswalk = _dedupe_crosswalk_rows(json.loads(Path(args.crosswalk).read_text()))
     manifest = json.loads(Path(args.manifest).read_text())
     out = Path(args.out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
