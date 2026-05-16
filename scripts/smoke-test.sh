@@ -70,7 +70,7 @@ echo ""
 echo "=== GET /health/data ==="
 DATA_HEALTH=$(curl -sf "$BASE_URL/health/data")
 assert_eq "status" "$(echo "$DATA_HEALTH" | jq -r '.status')" "ready"
-assert_eq "drugbank" "$(echo "$DATA_HEALTH" | jq -r '.drugbank')" "connected"
+assert_eq "ddinter" "$(echo "$DATA_HEALTH" | jq -r '.ddinter')" "connected"
 
 # --- Test 2: POST /analyze ---
 
@@ -95,6 +95,7 @@ INTERACTIONS=$(curl -sf -X POST "$BASE_URL/interactions" \
 
 assert_eq "safe" "$(echo "$INTERACTIONS" | jq -r '.safe')" "false"
 assert_not_empty "severity" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].severity')"
+assert_eq "source" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].source')" "ddinter"
 assert_not_empty "description" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].description')"
 
 # --- Summary ---

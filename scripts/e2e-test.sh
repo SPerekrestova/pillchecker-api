@@ -67,7 +67,7 @@ echo ""
 echo "=== GET /health/data ==="
 DATA_HEALTH=$(curl -sf "$BASE_URL/health/data")
 assert_eq "status" "$(echo "$DATA_HEALTH" | jq -r '.status')" "ready"
-assert_eq "drugbank" "$(echo "$DATA_HEALTH" | jq -r '.drugbank')" "connected"
+assert_eq "ddinter" "$(echo "$DATA_HEALTH" | jq -r '.ddinter')" "connected"
 
 # ============================================
 # 2. POST /analyze — contract validation
@@ -129,8 +129,10 @@ else fail "interactions array is empty"; fi
 assert_not_empty "drug_a" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].drug_a')"
 assert_not_empty "drug_b" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].drug_b')"
 assert_not_empty "severity" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].severity')"
+assert_not_empty "source" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].source')"
 assert_not_empty "description" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].description')"
 assert_not_empty "management" "$(echo "$INTERACTIONS" | jq -r '.interactions[0].management')"
+assert_eq "coverage_summary present" "$(echo "$INTERACTIONS" | jq '.coverage_summary.ddinter != null')" "true"
 
 echo ""
 echo "=== POST /interactions (safe pair) ==="
