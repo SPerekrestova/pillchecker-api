@@ -211,6 +211,11 @@ def test_sanity_check_fails_if_size_drift_too_large(tmp_path: Path):
     assert ok is False
 
 
+def test_sanity_check_cli_default_row_floor_tracks_current_ddinter_release():
+    args = build_ddinter_db._build_parser().parse_args(["sanity-check", "--db-path", "data/ddinter.db"])
+    assert args.min_rows == 100_000
+
+
 # --- Severity conflict detection ---
 
 def test_severity_conflict_warns_and_keeps_first(tmp_path: Path, caplog):
