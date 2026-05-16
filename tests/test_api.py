@@ -129,6 +129,45 @@ class TestInteractionsValidation:
         assert resp.status_code == 422
 
 
+def test_interaction_result_accepts_new_fields():
+    from app.api.schemas import InteractionResult
+
+    result = InteractionResult(
+        drug_a="Warfarin",
+        drug_b="Aspirin",
+        rxcui_a="11289",
+        rxcui_b="1191",
+        severity="major",
+        source="ddinter",
+        description="",
+        management="Consult a healthcare professional.",
+        uncertain=False,
+    )
+    assert result.source == "ddinter"
+    assert result.rxcui_a == "11289"
+
+
+def test_interactions_response_includes_coverage_summary():
+    from app.api.schemas import DDInterDataSource, InteractionsDataSources, InteractionsResponse
+
+    response = InteractionsResponse(
+        interactions=[],
+        safe=True,
+        error=None,
+        data_sources=InteractionsDataSources(
+            ddinter=DDInterDataSource(
+                version="2.0",
+                license="CC BY-NC-SA 4.0",
+                attribution_url="https://ddinter2.scbdd.com/",
+            ),
+            severity_classifier="model-id",
+        ),
+        coverage_summary={"ddinter": 0, "openfda": 0, "unknown": 0},
+    )
+    assert response.coverage_summary == {"ddinter": 0, "openfda": 0, "unknown": 0}
+    assert response.data_sources.ddinter.version == "2.0"
+
+
 class TestInteractionsEndpoint:
     def test_known_interaction(self, client, mock_drugbank):
         mock_drugbank.get_interactions.side_effect = [
