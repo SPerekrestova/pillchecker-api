@@ -125,3 +125,54 @@ def test_build_emits_valid_sqlite(tmp_path: Path):
         assert meta["source_release"] == "ddinter-test"
         assert "build_timestamp" in meta
         assert meta["csv_sha256_manifest"] == "abc123"
+
+
+def _build_minimal_db(tmp_path: Path, *, rows: int = 2, severity_for_sentinel: str = "Major") -> Path:
+    csv = tmp_path / "ddinter_downloads_code_A.csv"
+    lines = ["DDInterID_A,Drug_A,DDInterID_B,Drug_B,Level"]
+    # Sentinel
+    lines.append(f"DDInter1,Warfarin,DDInter2,Aspirin,{severity_for_sentinel}")
+    # Filler rows
+    for i in range(rows - 1):
+        lines.append(f"DDInter{i+10},Drug{i},DDInter{i+100},Other{i},Moderate")
+    csv.write_text("\n".join(lines) + "\n")
+    crosswalk = tmp_path / "crosswalk.json"
+    crosswalk.write_text("[]")
+    manifest = tmp_path / "ddinter_manifest.json"
+    manifest.write_text(json.dumps({"csv_sha256": {}, "manifest_sha256": "x"}))
+    db_path = tmp_path / "ddinter.db"
+    build_ddinter_db.cmd_build(argparse.Namespace(
+        csv_dir=str(tmp_path), crosswalk=str(crosswalk),
+        manifest=str(manifest), out_path=str(db_path), tag="ddinter-test",
+    ))
+    return db_path
+
+
+def test_sanity_check_passes_for_valid_db(tmp_path: Path):
+    db = _build_minimal_db(tmp_path)
+    # Override thresholds so we don't need 250k rows in a unit test.
+    ok = build_ddinter_db.sanity_check(
+        db, min_rows=2, sentinel=("Warfarin", "Aspirin"), expected_severity="Major",
+        previous_size_bytes=None,
+    )
+    assert ok is True
+
+
+def test_sanity_check_fails_if_sentinel_severity_wrong(tmp_path: Path):
+    db = _build_minimal_db(tmp_path, severity_for_sentinel="Minor")
+    ok = build_ddinter_db.sanity_check(
+        db, min_rows=2, sentinel=("Warfarin", "Aspirin"), expected_severity="Major",
+        previous_size_bytes=None,
+    )
+    assert ok is False
+
+
+def test_sanity_check_fails_if_size_drift_too_large(tmp_path: Path):
+    db = _build_minimal_db(tmp_path)
+    actual_size = db.stat().st_size
+    # Pretend previous release was 10x larger -> drift > 20%
+    ok = build_ddinter_db.sanity_check(
+        db, min_rows=2, sentinel=("Warfarin", "Aspirin"), expected_severity="Major",
+        previous_size_bytes=actual_size * 10,
+    )
+    assert ok is False
