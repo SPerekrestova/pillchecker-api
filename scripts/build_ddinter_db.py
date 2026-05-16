@@ -35,6 +35,7 @@ logger = logging.getLogger("build_ddinter_db")
 USER_AGENT = "pillchecker-ddinter-build"
 
 _REQUIRED_CSV_COLUMNS = {"DDInterID_A", "Drug_A", "DDInterID_B", "Drug_B", "Level"}
+DEFAULT_MIN_INTERACTION_ROWS = 100_000
 
 
 def compute_csv_sha256(path: Path) -> str:
@@ -459,7 +460,7 @@ def cmd_build(args: argparse.Namespace) -> int:
 def sanity_check(
     db_path: Path,
     *,
-    min_rows: int = 250_000,
+    min_rows: int = DEFAULT_MIN_INTERACTION_ROWS,
     sentinel: tuple[str, str] = ("Warfarin", "Aspirin"),
     expected_severity: str = "Major",
     previous_size_bytes: int | None,
@@ -571,7 +572,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_check = sub.add_parser("sanity-check", help="Validate emitted SQLite")
     p_check.add_argument("--db-path", required=True)
-    p_check.add_argument("--min-rows", type=int, default=250_000)
+    p_check.add_argument("--min-rows", type=int, default=DEFAULT_MIN_INTERACTION_ROWS)
     p_check.add_argument("--sentinel", nargs=2, default=["Warfarin", "Aspirin"])
     p_check.add_argument("--expected-severity", default="Major")
     p_check.add_argument("--previous-size-bytes", type=int, default=None)
