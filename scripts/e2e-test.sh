@@ -139,7 +139,7 @@ echo "=== POST /interactions (safe pair) ==="
 SAFE=$(curl -sf -X POST "$BASE_URL/interactions" \
     -H "Content-Type: application/json" \
     ${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"} \
-    -d '{"drugs": ["acetaminophen", "amoxicillin"]}')
+    -d '{"drugs": ["acetaminophen", "atorvastatin"]}')
 assert_eq "safe" "$(echo "$SAFE" | jq -r '.safe')" "true"
 assert_eq "no interactions" "$(echo "$SAFE" | jq '.interactions | length')" "0"
 

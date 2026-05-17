@@ -27,7 +27,7 @@ MUST_DETECT = [
 ]
 
 MUST_BE_SAFE = [
-    ("acetaminophen", "amoxicillin", "no known interaction"),
+    ("acetaminophen", "atorvastatin", "no known interaction in DDInter seed"),
 ]
 
 
