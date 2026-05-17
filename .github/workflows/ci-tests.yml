@@ -167,6 +167,9 @@ jobs:
       - name: Run smoke tests
         run: ./scripts/smoke-test.sh http://localhost:8000
 
+      - name: Run interaction smoke tests
+        run: python3 scripts/smoke_test_interactions.py http://localhost:8000
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api

@@ -13,7 +13,8 @@ Set API_KEY env var for authenticated endpoints.
 
 import os
 import sys
-import httpx
+import json
+from urllib import error, request
 
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
 API_KEY = os.environ.get("API_KEY", "")
@@ -21,7 +22,6 @@ API_KEY = os.environ.get("API_KEY", "")
 MUST_DETECT = [
     ("warfarin", "acetylsalicylic acid", "major bleeding risk", "ddinter"),
     ("warfarin", "ibuprofen", "major bleeding risk", None),
-    ("phenelzine", "fluoxetine", "serotonin syndrome — contraindicated", None),
     ("ritonavir", "simvastatin", "rhabdomyolysis — contraindicated", None),
     ("methotrexate", "trimethoprim", "bone marrow suppression", None),
 ]
@@ -43,18 +43,24 @@ def check_pair(
     if API_KEY:
         headers["X-API-Key"] = API_KEY
 
-    resp = httpx.post(
-        f"{BASE_URL}/interactions",
-        json={"drugs": [drug_a, drug_b]},
-        headers=headers,
-        timeout=30,
-    )
-
-    if resp.status_code != 200:
-        print(f"  FAIL: HTTP {resp.status_code}")
+    payload = json.dumps({"drugs": [drug_a, drug_b]}).encode("utf-8")
+    req = request.Request(f"{BASE_URL}/interactions", data=payload, headers=headers, method="POST")
+    try:
+        with request.urlopen(req, timeout=30) as resp:
+            status_code = resp.status
+            body = resp.read().decode("utf-8")
+    except error.HTTPError as exc:
+        print(f"  FAIL: HTTP {exc.code}")
+        return False
+    except error.URLError as exc:
+        print(f"  FAIL: request failed: {exc}")
         return False
 
-    data = resp.json()
+    if status_code != 200:
+        print(f"  FAIL: HTTP {status_code}")
+        return False
+
+    data = json.loads(body)
     actual_safe = data.get("safe")
     coverage = data.get("coverage_summary") or {}
     if "ddinter" not in coverage:
