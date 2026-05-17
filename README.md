@@ -11,7 +11,7 @@ license: mit
 
 # PillChecker API
 
-PillChecker helps users find out if two medications are safe to take at the same time. This repository contains the backend API that identifies drugs from OCR text and checks for dangerous interactions using DrugBank pharmaceutical data.
+PillChecker helps users find out if two medications are safe to take at the same time. This repository contains the backend API that identifies drugs from OCR text and checks for dangerous interactions using DDInter 2.0 with OpenFDA fallback evidence.
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19792062.svg)](https://doi.org/10.5281/zenodo.19792062)
 
@@ -37,12 +37,12 @@ Converts unstructured OCR text into standardized drug records using a multi-step
 
 ### Interaction Checking
 
-Drug-drug interactions are resolved against the **DrugBank** pharmaceutical database through direct async SQLite access:
+Drug-drug interactions are resolved against a pinned **DDInter 2.0** SQLite database with OpenFDA fallback evidence:
 
-1. **DrugBank SQLite client**: `app/clients/drugbank_db.py` opens the pre-built DrugBank SQLite database (~17,400 drugs) with `aiosqlite` and FTS5 search.
-2. **Bidirectional lookup**: For each drug pair, the checker queries both directions (A->B and B->A) in parallel using `asyncio.gather()`.
-3. **Severity classification**: Interaction descriptions are first parsed by a deterministic **template parser** that matches regex patterns in DrugBank text. If the parser cannot determine severity, a **DeBERTa v3** zero-shot classifier is used as fallback. Unknown severity defaults to `major` with `uncertain = true`.
-4. **Caching**: DrugBank interaction records are cached in-process for 4 hours; RxNorm lookups are cached for 24 hours.
+1. **DDInter SQLite client**: `app/clients/ddinter_db.py` opens the pre-built DDInter SQLite database with `aiosqlite` and FTS5 search.
+2. **RxCUI-first lookup**: For each drug pair, the checker resolves RxCUIs through RxNorm, maps them to DDInter IDs, and falls back to DDInter name search when needed.
+3. **OpenFDA fallback**: If DDInter has no pair match, the checker searches FDA label interaction text and classifies severity with the DeBERTa v3 zero-shot classifier.
+4. **Coverage summary**: `/interactions` reports whether each checked pair resolved through DDInter, OpenFDA, or neither source.
 
 ### Transparency
 
@@ -55,7 +55,7 @@ Both `/analyze` and `/interactions` responses include:
 The image uses a three-stage build to keep layers small and reproducible:
 
 - **Stage 1 (Python)**: `uv` installs Python dependencies into an isolated venv.
-- **Stage 2 (DB downloader)**: the pinned DrugBank SQLite database is downloaded from the explicitly configured GitHub Releases source.
+- **Stage 2 (DB downloader)**: the pinned DDInter SQLite database is downloaded from the explicitly configured GitHub Releases source.
 - **Stage 3 (Runtime)**: combines the venv, SQLite database, and app code. NER and severity models are pre-downloaded so the image is fully self-contained.
 
 ## API Endpoints
@@ -63,7 +63,7 @@ The image uses a three-stage build to keep layers small and reproducible:
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/health` | No | Liveness check |
-| `GET` | `/health/data` | No | Readiness -- confirms DrugBank SQLite connection |
+| `GET` | `/health/data` | No | Readiness -- confirms DDInter SQLite connection |
 | `POST` | `/analyze` | API key | Extract drugs from OCR text |
 | `POST` | `/interactions` | API key | Check interactions for a list of drug names |
 | `POST` | `/admin/cache/clear` | API key | Clear all in-memory caches |
@@ -94,7 +94,8 @@ The API is deployed as a staging environment on Hugging Face Spaces for remote t
 - **[PillChecker Collection](https://huggingface.co/collections/SPerva/pillchecker-69ee0f67dee76ff7ae9ea30a)** -- Central hub for all models and datasets used in this project.
 - **[OpenMed NER PharmaDetect](https://huggingface.co/OpenMed/OpenMed-NER-PharmaDetect-BioPatient-108M)** -- drug entity recognition model (108M params). License: Apache 2.0
 - **[RxNorm REST API](https://lhncbc.nlm.nih.gov/RxNav/APIs/RxNormAPIs.html)** -- drug name normalization and RxCUI mapping. Provided by NLM (free to use).
-- **[DrugBank](https://www.drugbank.com/)** -- pharmaceutical database providing structured drug-drug interaction data. Accessed through a pinned SQLite database configured with `DRUGBANK_DB_REPO` and `DRUGBANK_DB_TAG` during Docker builds.
+- **[DDInter 2.0](https://ddinter2.scbdd.com/)** -- drug-drug interaction dataset accessed through a pinned SQLite database configured with `INTERACTION_DB_REPO` and `INTERACTION_DB_TAG` during Docker builds.
+- **[OpenFDA Drug Label API](https://open.fda.gov/apis/drug/label/)** -- fallback evidence source for interaction text when DDInter has no pair match.
 - **[DeBERTa-v3-base-mnli-fever-anli](https://huggingface.co/MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli)** -- zero-shot classifier for interaction severity. License: MIT
 - **[Hugging Face Transformers](https://huggingface.co/docs/transformers)** -- NLP pipeline library. License: Apache 2.0
 
@@ -115,4 +116,3 @@ If you use this software or the benchmark dataset in your research, please cite 
   note = {GitHub Repository}
 }
 ```
-

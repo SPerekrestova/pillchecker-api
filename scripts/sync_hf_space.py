@@ -35,9 +35,6 @@ DEFAULT_IGNORE_PATTERNS = [
     "venv/**",
     "models/**",
     "data/**",
-    "drugbank-mcp-server/node_modules/**",
-    "drugbank-mcp-server/data/**",
-    "drugbank-mcp-server/build/**",
     "__pycache__/**",
     "*.pyc",
 ]

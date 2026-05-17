@@ -1,6 +1,6 @@
 """OpenFDA fallback client for drug interaction checking.
 
-Used when DrugBank returns an empty interaction list for a drug.
+Used when DDInter returns an empty interaction list for a drug pair.
 Fetches the FDA drug label and searches its drug_interactions text
 for a mention of the target drug.
 

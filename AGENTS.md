@@ -86,17 +86,16 @@ These rules are authoritative for AI agents working in this repository.
 4. `scripts/e2e-test.sh` is the broader API contract test for iOS-facing fields.
 5. `scripts/smoke_test_interactions.py` is the targeted interaction-regression smoke test.
 6. `scripts/ci-startup.sh` and `scripts/prod-startup.sh` are both required because Docker Compose CI overrides the production entrypoint.
-7. `scripts/download_drugbank_db.py` remains necessary while Docker builds fetch a pinned SQLite DB from GitHub Releases; remove it only after replacing the build-time DB source with a non-GitHub artifact flow.
+7. `scripts/download_interaction_db.py` remains necessary while Docker builds fetch the pinned DDInter SQLite DB from GitHub Releases.
 
 ## GCP pipeline rules
 
 1. GitHub Actions deploys to Cloud Run only when `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`, and `GCP_PROJECT_ID` are configured.
 2. The deployer identity should use Workload Identity Federation, not long-lived JSON keys.
 3. Set `CLOUD_RUN_SERVICE_ACCOUNT` when runtime should use an account other than the default `deploy-sa@<project>.iam.gserviceaccount.com`.
-4. Set `DRUGBANK_DB_REPO` explicitly to a maintained GitHub release repo that publishes `drugbank.db`; do not rely on `openpharma-org/drugbank-mcp-server` as a default DB release source.
-5. Keep `DRUGBANK_DB_TAG` pinned and configure `DRUGBANK_DB_TOKEN` before enabling CI image builds or Cloud Run deploys for the explicit DB release source.
+4. Set `INTERACTION_DB_REPO` explicitly to the maintained GitHub release repo that publishes `ddinter.db`.
+5. Keep `INTERACTION_DB_TAG` pinned before enabling CI image builds or Cloud Run deploys for the explicit DB release source.
 6. Do not store GCP credentials in the repository.
-7. Current alternatives check: `genomoncology/biomcp`, `googlarz/health-skill`, and `maziyarpanahi/openmed` do not replace DrugBank interaction data; they are literature/health-tracking/NLP tools rather than maintained drug-drug interaction databases.
 
 ## Recent cleanup state
 
@@ -114,14 +113,14 @@ These rules are authoritative for AI agents working in this repository.
 
 ## Next implementation after PR #55
 
-Start with the controlled DrugBank DB artifact and GCP deploy-hardening track before expanding benchmark scope. `docs/infrastructure_hardening.md` contains the detailed plan; the execution order for the next Devin session is:
+DDInter migration is complete. Continue the GCP deploy-hardening track before expanding benchmark scope. `docs/infrastructure_hardening.md` contains the detailed plan; the execution order for the next Devin session is:
 
-1. Create or choose a maintained `drugbank.db` artifact source controlled by this project, then configure GitHub Actions `DRUGBANK_DB_REPO`, pinned `DRUGBANK_DB_TAG`, and `DRUGBANK_DB_TOKEN`.
-2. Add a release preflight job that verifies the configured tag, `drugbank.db` asset, size, and checksum before Docker build.
-3. Add checksum pinning, such as `DRUGBANK_DB_SHA256`, and verify it in the download/build path.
+1. DDInter migration complete. DDI source = DDInter 2.0 + OpenFDA fallback. See PRs #56 (Phase A), #60 (Phase B), #61 (follow-ups), this PR (Phase C).
+2. Add a release preflight job that verifies the configured tag, `ddinter.db` asset, size, and checksum before Docker build.
+3. Add checksum pinning, such as `INTERACTION_DB_SHA256`, and verify it in the download/build path.
 4. Re-enable and validate Docker image build, integration smoke tests, Cloud Run deploy, `/health`, `/health/data`, and one authenticated `/interactions` request.
 5. Add Cloud Run hardening flags: startup/liveness probes, explicit runtime service account, revision labels, and instance policy.
-6. Add post-deploy smoke tests and logging/alerting for startup failures, DrugBank connection failures, and repeated 5xx responses.
+6. Add post-deploy smoke tests and logging/alerting for startup failures, DDInter connection failures, and repeated 5xx responses.
 7. After DB/deploy infrastructure is trustworthy, continue benchmark expansion from the 500 reviewed seed toward larger reviewed and weak-label stress-test splits.
 
 ## Current known issues
@@ -131,4 +130,3 @@ Start with the controlled DrugBank DB artifact and GCP deploy-hardening track be
 3. GLiNER results should stay out of README/project claims until code, configuration, and artifacts are reproducible.
 4. Interaction benchmark results are not meaningful until real interaction ground truth exists.
 5. OCR-cleaner evaluation must use independent clean references, not cleaner-generated text as its own oracle.
-6. The OpenPharma DrugBank MCP repository currently has no Git release refs to use as a stable SQLite DB source; configure an explicit controlled DB release source before enabling Docker build/deploy jobs.
