@@ -1,7 +1,6 @@
 """Regression gate: DDInter should match curated seed severities.
 
-This is not the temporary DrugBank-vs-DDInter parity check from the original
-plan. It is a permanent guard against drifting away from curated smoke severity
+This is a permanent guard against drifting away from curated smoke severity
 ground truth in eval/interaction_seed_cases.json.
 """
 

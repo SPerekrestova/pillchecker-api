@@ -1,5 +1,5 @@
 {
-    "description": "PillChecker is an open-source API and benchmarking suite for identifying pharmaceutical ingredients from OCR text and checking for potential drug-drug interactions. It features a multi-agent NER pipeline using PharmaDetect and GLiNER, and validates results against RxNorm and DrugBank.",
+    "description": "PillChecker is an open-source API and benchmarking suite for identifying pharmaceutical ingredients from OCR text and checking for potential drug-drug interactions. It features a multi-agent NER pipeline using PharmaDetect and GLiNER, and validates results against RxNorm and DDInter.",
     "creators": [
         {
             "name": "Perekrestova, Svetlana",

@@ -64,7 +64,7 @@ Interaction evaluation requires `expected_interactions` and known-safe pairs. `i
 1. interaction recall for known interacting ingredient pairs;
 2. false-alarm rate on known-safe pairs;
 3. severity accuracy for `minor`, `moderate`, `major`, and `unknown` labels;
-4. source routing accuracy between DrugBank and OpenFDA fallback evidence.
+4. source routing accuracy between DDInter and OpenFDA fallback evidence.
 
 Until this ground truth exists, interaction metrics should be treated as smoke tests rather than benchmark claims.
 
