@@ -1,149 +1,167 @@
-"""Interaction checker — looks up drug pairs via DrugBank SQLite."""
+"""Interaction checker with DDInter SQLite primary and OpenFDA fallback."""
+
+from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
-from app.clients import drugbank_client, openfda_client
+from app.clients import ddinter_db, openfda_client, rxnorm_client
 from app.middleware.audit_log import get_audit_context
-from app.nlp import severity_classifier, severity_parser
+from app.nlp import severity_classifier
 
 logger = logging.getLogger(__name__)
 
 _MANAGEMENT = "Consult a healthcare professional for guidance."
+_EMPTY_COVERAGE = {"ddinter": 0, "openfda": 0, "unknown": 0}
 
 
-async def check(drug_names: list[str]) -> dict:
-    """Check interactions between all pairs of drugs.
-
-    Returns dict with:
-      - interactions: list of interaction dicts
-      - safe: bool | None (None if data source unavailable)
-      - error: str | None
-
-    Note: Per-drug DrugBank errors (malformed response, drug not found) return []
-    silently, so safe=True means "no interactions detected" not "guaranteed safe".
-    """
+async def check(drug_names: list[str]) -> dict[str, Any]:
+    """Check pairwise interactions for the supplied drug names."""
     if len(drug_names) < 2:
-        return {"interactions": [], "safe": True, "error": None}
-
-    # Fetch interaction lists for each drug (cached per drug)
-    unique_names = list(dict.fromkeys(drug_names))  # deduplicate, preserve order
-    results = await asyncio.gather(
-        *[drugbank_client.get_interactions(name) for name in unique_names],
-        return_exceptions=True,
-    )
-
-    # Handle per-drug failures gracefully
-    all_failed = True
-    drug_interactions: dict[str, list[dict]] = {}
-    for name, result in zip(unique_names, results):
-        if isinstance(result, Exception):
-            logger.warning("DrugBank failed for %s: %s", name, result)
-            drug_interactions[name] = []
-        else:
-            all_failed = False
-            drug_interactions[name] = result
-
-    if all_failed and len(unique_names) > 0:
-        logger.error("DrugBank unavailable — cannot check interactions")
         return {
             "interactions": [],
-            "safe": None,
-            "error": "Drug interaction data temporarily unavailable",
+            "safe": True,
+            "error": None,
+            "coverage_summary": dict(_EMPTY_COVERAGE),
         }
 
-    # Check all pairs (use deduplicated list to avoid self-pairs)
-    interactions = []
-    for i, drug_a in enumerate(unique_names):
-        for drug_b in unique_names[i + 1:]:
-            result = await _find_interaction(drug_a, drug_b, drug_interactions)
-            if result:
-                logger.info(
-                    "Interaction found: %s + %s = %s",
-                    drug_a, drug_b, result["severity"],
-                )
-                interactions.append(result)
+    unique_names = []
+    seen_names: set[str] = set()
+    for name in drug_names:
+        key = name.casefold()
+        if key not in seen_names:
+            seen_names.add(key)
+            unique_names.append(name)
+    rxcui_results = await asyncio.gather(
+        *[rxnorm_client.get_rxcui(name) for name in unique_names],
+        return_exceptions=True,
+    )
+    rxcui_by_name: dict[str, str | None] = {}
+    for name, result in zip(unique_names, rxcui_results):
+        if isinstance(result, Exception):
+            logger.warning("RxNorm failed for %s: %s", name, result)
+            rxcui_by_name[name] = None
+        else:
+            rxcui_by_name[name] = result
+
+    interactions: list[dict[str, Any]] = []
+    coverage = dict(_EMPTY_COVERAGE)
+    for index, drug_a in enumerate(unique_names):
+        for drug_b in unique_names[index + 1:]:
+            entry, bucket = await _resolve_pair(drug_a, drug_b, rxcui_by_name)
+            coverage[bucket] += 1
+            if entry is not None:
+                interactions.append(entry)
 
     return {
         "interactions": interactions,
         "safe": len(interactions) == 0,
         "error": None,
+        "coverage_summary": coverage,
     }
 
 
-async def _find_interaction(
+async def _resolve_pair(
     drug_a: str,
     drug_b: str,
-    drug_interactions: dict[str, list[dict]],
-) -> dict | None:
-    """Check if drug_b appears in drug_a's interaction list, or vice versa.
+    rxcui_by_name: dict[str, str | None],
+) -> tuple[dict[str, Any] | None, str]:
+    rxcui_a = rxcui_by_name.get(drug_a)
+    rxcui_b = rxcui_by_name.get(drug_b)
 
-    Falls back to OpenFDA if at least one drug has an empty DrugBank list.
-    """
-    # Check A's list for B
-    match = _match_in_list(drug_b, drug_interactions.get(drug_a, []))
-    if match:
-        return await _format(drug_a, drug_b, match, source="drugbank")
-
-    # Check B's list for A
-    match = _match_in_list(drug_a, drug_interactions.get(drug_b, []))
-    if match:
-        return await _format(drug_a, drug_b, match, source="drugbank")
-
-    # At least one empty DrugBank list → cap-hit or error; try OpenFDA
-    if not drug_interactions.get(drug_a) or not drug_interactions.get(drug_b):
+    if rxcui_a and rxcui_b:
         try:
-            fda_match = await openfda_client.check_pair(drug_a, drug_b)
-            if fda_match is None:
-                fda_match = await openfda_client.check_pair(drug_b, drug_a)
-            if fda_match:
-                return await _format(drug_a, drug_b, fda_match, source="openfda")
+            ddinter_hit = await ddinter_db.client.lookup_by_rxcui(rxcui_a, rxcui_b)
         except Exception:
-            logger.warning("OpenFDA fallback failed for %s + %s", drug_a, drug_b, exc_info=True)
-
-    return None
-
-
-def _match_in_list(target: str, interactions: list[dict]) -> dict | None:
-    """Find target drug name in a list of interaction entries (case-insensitive)."""
-    target_lower = target.lower()
-    for entry in interactions:
-        if entry.get("drug", "").lower() == target_lower:
-            return entry
-    return None
-
-
-async def _format(drug_a: str, drug_b: str, match: dict, source: str) -> dict:
-    """Format an interaction entry for the API response.
-
-    Routes severity classification based on source:
-    - drugbank: template parser first, classifier fallback
-    - openfda: zero-shot classifier
-    """
-    description = match.get("description", "")
-
-    # Check for pre-computed severity from DrugBank build (Phase 3)
-    precomputed_severity = match.get("severity")
-    if precomputed_severity and precomputed_severity != "unknown":
-        severity = precomputed_severity
-        uncertain = False
-    elif source == "drugbank":
-        severity = severity_parser.parse_severity(description)
-        if severity == "unknown":
-            # Template didn't match — fall back to classifier
-            loop = asyncio.get_running_loop()
-            severity, uncertain = await loop.run_in_executor(
-                None, severity_classifier.classify, description
-            )
+            logger.warning("DDInter RxCUI lookup failed for %s + %s", drug_a, drug_b, exc_info=True)
         else:
-            uncertain = False
-    else:
-        # OpenFDA: use zero-shot classifier
-        loop = asyncio.get_running_loop()
-        severity, uncertain = await loop.run_in_executor(
-            None, severity_classifier.classify, description
-        )
+            if ddinter_hit:
+                return _format_ddinter(drug_a, drug_b, rxcui_a, rxcui_b, ddinter_hit), "ddinter"
 
+    try:
+        ddinter_hit = await ddinter_db.client.lookup_by_name_fts(drug_a, drug_b)
+    except Exception:
+        logger.warning("DDInter FTS lookup failed for %s + %s", drug_a, drug_b, exc_info=True)
+    else:
+        if ddinter_hit:
+            return _format_ddinter(drug_a, drug_b, rxcui_a, rxcui_b, ddinter_hit), "ddinter"
+
+    fda_hit = await _openfda_pair(drug_a, drug_b)
+    if fda_hit:
+        return await _format_openfda(drug_a, drug_b, rxcui_a, rxcui_b, fda_hit), "openfda"
+
+    return None, "unknown"
+
+
+def _format_ddinter(
+    drug_a: str,
+    drug_b: str,
+    rxcui_a: str | None,
+    rxcui_b: str | None,
+    hit: dict[str, Any],
+) -> dict[str, Any]:
+    severity = hit.get("severity") or "unknown"
+    _audit_severity(drug_a, drug_b, severity, False, "ddinter", "ddinter_sqlite")
+    return {
+        "drug_a": drug_a,
+        "drug_b": drug_b,
+        "rxcui_a": rxcui_a,
+        "rxcui_b": rxcui_b,
+        "severity": severity,
+        "source": "ddinter",
+        "description": (
+            f"Interaction reported in DDInter 2.0 for "
+            f"{hit.get('drug_a_name', drug_a)} + {hit.get('drug_b_name', drug_b)}."
+        ),
+        "management": _MANAGEMENT,
+        "uncertain": False,
+    }
+
+
+async def _openfda_pair(drug_a: str, drug_b: str) -> dict[str, Any] | None:
+    try:
+        fda_hit = await openfda_client.check_pair(drug_a, drug_b)
+        if fda_hit is None:
+            fda_hit = await openfda_client.check_pair(drug_b, drug_a)
+        return fda_hit
+    except Exception:
+        logger.warning("OpenFDA fallback failed for %s + %s", drug_a, drug_b, exc_info=True)
+        return None
+
+
+async def _format_openfda(
+    drug_a: str,
+    drug_b: str,
+    rxcui_a: str | None,
+    rxcui_b: str | None,
+    hit: dict[str, Any],
+) -> dict[str, Any]:
+    description = hit.get("description", "")
+    loop = asyncio.get_running_loop()
+    severity, uncertain = await loop.run_in_executor(None, severity_classifier.classify, description)
+    _audit_severity(drug_a, drug_b, severity, uncertain, "openfda", "zero_shot_classifier")
+    return {
+        "drug_a": drug_a,
+        "drug_b": drug_b,
+        "rxcui_a": rxcui_a,
+        "rxcui_b": rxcui_b,
+        "severity": severity,
+        "source": "openfda",
+        "description": description or "Interaction reported in FDA labeling.",
+        "management": _MANAGEMENT,
+        "uncertain": uncertain,
+    }
+
+
+def _audit_severity(
+    drug_a: str,
+    drug_b: str,
+    severity: str,
+    uncertain: bool,
+    source: str,
+    method: str,
+) -> None:
     ctx = get_audit_context()
     if ctx:
         ctx.add("severity_classification", {
@@ -152,14 +170,5 @@ async def _format(drug_a: str, drug_b: str, match: dict, source: str) -> dict:
             "severity": severity,
             "uncertain": uncertain,
             "source": source,
-            "method": "template_parser" if source == "drugbank" else "zero_shot_classifier",
+            "method": method,
         })
-
-    return {
-        "drug_a": drug_a,
-        "drug_b": drug_b,
-        "severity": severity,
-        "description": description or "Interaction reported in drug database.",
-        "management": _MANAGEMENT,
-        "uncertain": uncertain,
-    }

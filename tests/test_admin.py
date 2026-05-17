@@ -8,21 +8,21 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client():
-    mock_drugbank = MagicMock()
-    mock_drugbank.connect = AsyncMock()
-    mock_drugbank.close = AsyncMock()
-    mock_drugbank.health_check = AsyncMock(return_value=True)
+    mock_ddinter = MagicMock()
+    mock_ddinter.connect = AsyncMock()
+    mock_ddinter.close = AsyncMock()
+    mock_ddinter.health_check = AsyncMock(return_value=True)
     mock_severity = MagicMock()
     mock_severity.load_model = MagicMock()
     mock_severity.is_loaded.return_value = True
 
     with (
         patch.dict(os.environ, {"API_KEY": "test-key"}),
-        patch("app.main.drugbank_client", mock_drugbank),
+        patch("app.main.ddinter_db.client", mock_ddinter),
         patch("app.main.severity_classifier", mock_severity),
         patch("app.main.ner_model"),
-        patch("app.api.health.drugbank_client", mock_drugbank),
-        patch("app.services.interaction_checker.drugbank_client", mock_drugbank),
+        patch("app.api.health.ddinter_db.client", mock_ddinter),
+        patch("app.services.interaction_checker.ddinter_db.client", mock_ddinter),
         patch("app.services.interaction_checker.severity_classifier", mock_severity),
     ):
         from app.main import app

@@ -1,6 +1,6 @@
 """Pydantic request/response models for the PillChecker API."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -47,21 +47,30 @@ class DrugRef(BaseModel):
 class InteractionResult(BaseModel):
     drug_a: str
     drug_b: str
+    rxcui_a: str | None = None
+    rxcui_b: str | None = None
     severity: str
+    source: Literal["ddinter", "openfda"]
     description: str
     management: str
     uncertain: bool = False
 
 
+class DDInterDataSource(BaseModel):
+    version: str
+    license: str
+    attribution_url: str
+
+
 class InteractionsDataSources(BaseModel):
-    drugbank_version: str | None = None
+    ddinter: DDInterDataSource | None = None
     severity_classifier: str
 
 
 _INTERACTION_LIMITATIONS = [
     "Checks pairwise interactions only — multi-drug cascades are not detected",
     "Does not account for patient-specific factors (age, weight, renal/hepatic function, genetics)",
-    "Coverage depends on DrugBank database scope (~19,800 drugs)",
+    "Coverage depends on the DDInter 2.0 corpus and OpenFDA labels",
     "Not a substitute for professional medical advice",
 ]
 
@@ -71,4 +80,5 @@ class InteractionsResponse(BaseModel):
     safe: bool | None
     error: str | None = None
     data_sources: InteractionsDataSources | None = None
+    coverage_summary: dict[str, int] = Field(default_factory=lambda: {"ddinter": 0, "openfda": 0, "unknown": 0})
     limitations: list[str] = _INTERACTION_LIMITATIONS

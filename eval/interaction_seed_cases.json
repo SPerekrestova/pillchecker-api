@@ -37,10 +37,10 @@
   "known_safe_pairs": [
     {
       "drug_a": "acetaminophen",
-      "drug_b": "amoxicillin",
+      "drug_b": "atorvastatin",
       "interacts": false,
-      "source": "existing smoke-test seed",
-      "notes": "Used as a known-safe negative smoke case."
+      "source": "DDInter release audit 2026-05-17",
+      "notes": "Used as a known-safe negative smoke case; both names map to DDInter IDs, but the seeded DDInter 2.0 release has no pair row."
     }
   ]
 }

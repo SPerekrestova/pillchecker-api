@@ -10,17 +10,17 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def mock_drugbank():
-    """Mock drugbank_client in every module that imports it."""
+def mock_ddinter():
+    """Mock DDInter client in every module that imports it."""
     mock = MagicMock()
-    mock.get_interactions = AsyncMock()
     mock.health_check = AsyncMock(return_value=True)
     mock.connect = AsyncMock()
     mock.close = AsyncMock()
-    mock.DrugBankUnavailableError = Exception
-    with patch("app.services.interaction_checker.drugbank_client", mock), \
-         patch("app.api.health.drugbank_client", mock), \
-         patch("app.main.drugbank_client", mock):
+    mock.lookup_by_rxcui = AsyncMock(return_value=None)
+    mock.lookup_by_name_fts = AsyncMock(return_value=None)
+    with patch("app.services.interaction_checker.ddinter_db.client", mock), \
+         patch("app.api.health.ddinter_db.client", mock), \
+         patch("app.main.ddinter_db.client", mock):
         yield mock
 
 
@@ -37,16 +37,7 @@ def mock_severity():
 
 
 @pytest.fixture
-def mock_severity_parser():
-    """Mock severity_parser in interaction checker."""
-    mock = MagicMock()
-    mock.parse_severity.return_value = "moderate"
-    with patch("app.services.interaction_checker.severity_parser", mock):
-        yield mock
-
-
-@pytest.fixture
-def client(mock_drugbank, mock_severity, mock_severity_parser):
+def client(mock_ddinter, mock_severity):
     from app.main import app
     return TestClient(app)
 
@@ -129,37 +120,101 @@ class TestInteractionsValidation:
         assert resp.status_code == 422
 
 
+def test_interaction_result_accepts_new_fields():
+    from app.api.schemas import InteractionResult
+
+    result = InteractionResult(
+        drug_a="Warfarin",
+        drug_b="Aspirin",
+        rxcui_a="11289",
+        rxcui_b="1191",
+        severity="major",
+        source="ddinter",
+        description="",
+        management="Consult a healthcare professional.",
+        uncertain=False,
+    )
+    assert result.source == "ddinter"
+    assert result.rxcui_a == "11289"
+
+
+def test_interactions_response_includes_coverage_summary():
+    from app.api.schemas import DDInterDataSource, InteractionsDataSources, InteractionsResponse
+
+    response = InteractionsResponse(
+        interactions=[],
+        safe=True,
+        error=None,
+        data_sources=InteractionsDataSources(
+            ddinter=DDInterDataSource(
+                version="2.0",
+                license="CC BY-NC-SA 4.0",
+                attribution_url="https://ddinter2.scbdd.com/",
+            ),
+            severity_classifier="model-id",
+        ),
+        coverage_summary={"ddinter": 0, "openfda": 0, "unknown": 0},
+    )
+    assert response.coverage_summary == {"ddinter": 0, "openfda": 0, "unknown": 0}
+    assert response.data_sources.ddinter.version == "2.0"
+
+
 class TestInteractionsEndpoint:
-    def test_known_interaction(self, client, mock_drugbank):
-        mock_drugbank.get_interactions.side_effect = [
-            [{"drug": "Warfarin", "description": "Increases bleeding risk."}],
-            [{"drug": "Ibuprofen", "description": "Increases bleeding risk."}],
-        ]
-        resp = client.post("/interactions", json={"drugs": ["ibuprofen", "warfarin"]})
+    def test_known_interaction(self, client):
+        with patch("app.api.interactions.interaction_checker.check", new=AsyncMock(return_value={
+            "interactions": [{
+                "drug_a": "ibuprofen",
+                "drug_b": "warfarin",
+                "rxcui_a": "5640",
+                "rxcui_b": "11289",
+                "severity": "major",
+                "source": "ddinter",
+                "description": "Interaction reported in DDInter 2.0.",
+                "management": "Consult a healthcare professional for guidance.",
+                "uncertain": False,
+            }],
+            "safe": False,
+            "error": None,
+            "coverage_summary": {"ddinter": 1, "openfda": 0, "unknown": 0},
+        })):
+            resp = client.post("/interactions", json={"drugs": ["ibuprofen", "warfarin"]})
         assert resp.status_code == 200
         data = resp.json()
         assert data["safe"] is False
         assert len(data["interactions"]) >= 1
         assert data["interactions"][0]["severity"] in ["major", "moderate"]
+        assert data["interactions"][0]["source"] == "ddinter"
+        assert data["coverage_summary"]["ddinter"] == 1
         assert "data_sources" in data
+        assert data["data_sources"]["ddinter"]["version"] == "2.0"
         assert "severity_classifier" in data["data_sources"]
 
-    def test_no_interaction(self, client, mock_drugbank):
-        mock_drugbank.get_interactions.side_effect = [
-            [], [],
-        ]
-        resp = client.post("/interactions", json={"drugs": ["ibuprofen", "amoxicillin"]})
+    def test_no_interaction(self, client):
+        with patch("app.api.interactions.interaction_checker.check", new=AsyncMock(return_value={
+            "interactions": [],
+            "safe": True,
+            "error": None,
+            "coverage_summary": {"ddinter": 0, "openfda": 0, "unknown": 1},
+        })):
+            resp = client.post("/interactions", json={"drugs": ["ibuprofen", "amoxicillin"]})
         assert resp.status_code == 200
         data = resp.json()
         assert data["safe"] is True
+        assert data["coverage_summary"]["unknown"] == 1
 
-    def test_three_drugs(self, client, mock_drugbank):
-        mock_drugbank.get_interactions.side_effect = [
-            [{"drug": "Warfarin", "description": "x"}, {"drug": "Aspirin", "description": "x"}],
-            [{"drug": "Ibuprofen", "description": "x"}, {"drug": "Aspirin", "description": "x"}],
-            [{"drug": "Ibuprofen", "description": "x"}, {"drug": "Warfarin", "description": "x"}],
-        ]
-        resp = client.post("/interactions", json={"drugs": ["ibuprofen", "warfarin", "aspirin"]})
+    def test_three_drugs(self, client):
+        with patch("app.api.interactions.interaction_checker.check", new=AsyncMock(return_value={
+            "interactions": [
+                {"drug_a": "ibuprofen", "drug_b": "warfarin", "severity": "major", "source": "ddinter",
+                 "description": "x", "management": "m", "uncertain": False},
+                {"drug_a": "warfarin", "drug_b": "aspirin", "severity": "major", "source": "ddinter",
+                 "description": "x", "management": "m", "uncertain": False},
+            ],
+            "safe": False,
+            "error": None,
+            "coverage_summary": {"ddinter": 2, "openfda": 0, "unknown": 1},
+        })):
+            resp = client.post("/interactions", json={"drugs": ["ibuprofen", "warfarin", "aspirin"]})
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["interactions"]) >= 2
@@ -181,18 +236,18 @@ class TestHealthEndpoint:
         assert data["status"] == "ok"
         assert data["version"] == "0.1.0"
 
-    def test_data_health_connected(self, client, mock_drugbank):
-        mock_drugbank.health_check.return_value = True
+    def test_data_health_connected(self, client, mock_ddinter):
+        mock_ddinter.health_check.return_value = True
         resp = client.get("/health/data")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ready"
-        assert data["drugbank"] == "connected"
+        assert data["ddinter"] == "connected"
 
-    def test_data_health_degraded(self, client, mock_drugbank):
-        mock_drugbank.health_check.return_value = False
+    def test_data_health_degraded(self, client, mock_ddinter):
+        mock_ddinter.health_check.return_value = False
         resp = client.get("/health/data")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "degraded"
-        assert data["drugbank"] == "unreachable"
+        assert data["ddinter"] == "unreachable"

@@ -212,6 +212,29 @@
         ],
         "title": "AnalyzeResponse"
       },
+      "DDInterDataSource": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "license": {
+            "type": "string",
+            "title": "License"
+          },
+          "attribution_url": {
+            "type": "string",
+            "title": "Attribution Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "license",
+          "attribution_url"
+        ],
+        "title": "DDInterDataSource"
+      },
       "DrugResult": {
         "properties": {
           "rxcui": {
@@ -299,9 +322,39 @@
             "type": "string",
             "title": "Drug B"
           },
+          "rxcui_a": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rxcui A"
+          },
+          "rxcui_b": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rxcui B"
+          },
           "severity": {
             "type": "string",
             "title": "Severity"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ddinter",
+              "openfda"
+            ],
+            "title": "Source"
           },
           "description": {
             "type": "string",
@@ -322,6 +375,7 @@
           "drug_a",
           "drug_b",
           "severity",
+          "source",
           "description",
           "management"
         ],
@@ -329,16 +383,15 @@
       },
       "InteractionsDataSources": {
         "properties": {
-          "drugbank_version": {
+          "ddinter": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/DDInterDataSource"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Drugbank Version"
+            ]
           },
           "severity_classifier": {
             "type": "string",
@@ -417,6 +470,13 @@
               }
             ]
           },
+          "coverage_summary": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Coverage Summary"
+          },
           "limitations": {
             "items": {
               "type": "string"
@@ -426,7 +486,7 @@
             "default": [
               "Checks pairwise interactions only \u2014 multi-drug cascades are not detected",
               "Does not account for patient-specific factors (age, weight, renal/hepatic function, genetics)",
-              "Coverage depends on DrugBank database scope (~19,800 drugs)",
+              "Coverage depends on the DDInter 2.0 corpus and OpenFDA labels",
               "Not a substitute for professional medical advice"
             ]
           }

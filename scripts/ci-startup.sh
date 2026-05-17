@@ -2,7 +2,7 @@
 set -e
 
 # CI Startup Script
-# DrugBank SQLite DB is baked into the image at build time.
+# DDInter SQLite DB is baked into the image at build time.
 
 echo "[CI] Starting in CI mode."
 
