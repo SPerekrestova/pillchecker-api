@@ -19,10 +19,11 @@ BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
 API_KEY = os.environ.get("API_KEY", "")
 
 MUST_DETECT = [
-    ("warfarin", "ibuprofen", "major bleeding risk"),
-    ("phenelzine", "fluoxetine", "serotonin syndrome — contraindicated"),
-    ("ritonavir", "simvastatin", "rhabdomyolysis — contraindicated"),
-    ("methotrexate", "trimethoprim", "bone marrow suppression"),
+    ("warfarin", "acetylsalicylic acid", "major bleeding risk", "ddinter"),
+    ("warfarin", "ibuprofen", "major bleeding risk", None),
+    ("phenelzine", "fluoxetine", "serotonin syndrome — contraindicated", None),
+    ("ritonavir", "simvastatin", "rhabdomyolysis — contraindicated", None),
+    ("methotrexate", "trimethoprim", "bone marrow suppression", None),
 ]
 
 MUST_BE_SAFE = [
@@ -30,7 +31,13 @@ MUST_BE_SAFE = [
 ]
 
 
-def check_pair(drug_a: str, drug_b: str, expected_safe: bool, reason: str) -> bool:
+def check_pair(
+    drug_a: str,
+    drug_b: str,
+    expected_safe: bool,
+    reason: str,
+    expected_source: str | None = None,
+) -> bool:
     """Check a single drug pair. Returns True if test passes."""
     headers = {"Content-Type": "application/json"}
     if API_KEY:
@@ -49,16 +56,28 @@ def check_pair(drug_a: str, drug_b: str, expected_safe: bool, reason: str) -> bo
 
     data = resp.json()
     actual_safe = data.get("safe")
+    coverage = data.get("coverage_summary") or {}
+    if "ddinter" not in coverage:
+        print(f"  FAIL: {drug_a} + {drug_b} → coverage_summary.ddinter missing")
+        return False
 
-    if actual_safe == expected_safe:
-        print(f"  PASS: {drug_a} + {drug_b} → safe={actual_safe} ({reason})")
-        return True
-    else:
+    if actual_safe != expected_safe:
         print(f"  FAIL: {drug_a} + {drug_b} → safe={actual_safe}, expected={expected_safe} ({reason})")
         if data.get("interactions"):
             for ix in data["interactions"]:
                 print(f"        {ix['severity']}: {ix['description'][:80]}")
         return False
+    if expected_source:
+        interactions = data.get("interactions") or []
+        actual_source = interactions[0].get("source") if interactions else None
+        if actual_source != expected_source:
+            print(
+                f"  FAIL: {drug_a} + {drug_b} → source={actual_source}, "
+                f"expected={expected_source} ({reason})"
+            )
+            return False
+    print(f"  PASS: {drug_a} + {drug_b} → safe={actual_safe} ({reason})")
+    return True
 
 
 def main():
@@ -68,8 +87,8 @@ def main():
     failed = 0
 
     print("=== Must detect interaction (safe=false) ===")
-    for drug_a, drug_b, reason in MUST_DETECT:
-        if check_pair(drug_a, drug_b, expected_safe=False, reason=reason):
+    for drug_a, drug_b, reason, expected_source in MUST_DETECT:
+        if check_pair(drug_a, drug_b, expected_safe=False, reason=reason, expected_source=expected_source):
             passed += 1
         else:
             failed += 1

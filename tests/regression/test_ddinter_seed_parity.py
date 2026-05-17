@@ -1,4 +1,9 @@
-"""Phase B gate: DDInter should match curated seed severities."""
+"""Regression gate: DDInter should match curated seed severities.
+
+This is not the temporary DrugBank-vs-DDInter parity check from the original
+plan. It is a permanent guard against drifting away from curated smoke severity
+ground truth in eval/interaction_seed_cases.json.
+"""
 
 from __future__ import annotations
 
@@ -16,13 +21,13 @@ _SEED = json.loads(Path("eval/interaction_seed_cases.json").read_text())["positi
 @pytest.mark.parametrize("case", _SEED)
 async def test_ddinter_seed_severity_matches_expected(case, monkeypatch):
     if not DB_PATH.exists():
-        pytest.skip("DDInter DB missing; parity gate requires INTERACTION_DB_PATH or data/ddinter.db")
+        pytest.skip("DDInter DB missing; regression gate requires INTERACTION_DB_PATH or data/ddinter.db")
 
     from app.clients import ddinter_db
     from app.services import interaction_checker
 
+    await ddinter_db.client.close()
     ddinter_db.client.db_path = str(DB_PATH)
-    ddinter_db.client._conn = None
     monkeypatch.setattr(interaction_checker.openfda_client, "check_pair", _no_openfda)
 
     try:

@@ -1,16 +1,13 @@
 """POST /interactions — check drug-drug interactions."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.api.schemas import DDInterDataSource, InteractionsDataSources, InteractionsRequest, InteractionsResponse
+from app.main import limiter
 from app.nlp import severity_classifier
 from app.services import interaction_checker
 
 router = APIRouter()
-
-
-from app.main import limiter
-from fastapi import Request
 
 @router.post("/interactions", response_model=InteractionsResponse)
 @limiter.limit("10/minute")

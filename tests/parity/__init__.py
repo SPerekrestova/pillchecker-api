@@ -1,1 +1,0 @@
-"""Phase-gated parity tests."""

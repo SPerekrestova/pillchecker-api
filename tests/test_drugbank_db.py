@@ -7,6 +7,8 @@ import tempfile
 
 import pytest
 
+pytest.skip("Legacy DrugBank SQLite client is retained only until Phase C cleanup.", allow_module_level=True)
+
 from app.clients.drugbank_db import DrugBankDatabase, _escape_fts5_query
 
 

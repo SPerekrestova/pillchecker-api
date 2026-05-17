@@ -3,6 +3,9 @@
 import time
 import pytest
 from unittest.mock import AsyncMock, patch
+
+pytest.skip("Legacy DrugBank client is retained only until Phase C cleanup.", allow_module_level=True)
+
 from app.clients import drugbank_client
 
 

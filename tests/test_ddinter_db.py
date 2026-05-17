@@ -75,6 +75,19 @@ async def test_health_check_true_when_db_present(populated_db):
     assert await ddc.client.health_check() is True
 
 
+async def test_connect_opens_database_read_only_without_sidecars(populated_db):
+    instance = ddc.DDInterDatabase(db_path=str(populated_db))
+    await instance.connect()
+    assert instance._conn is not None
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            await instance._conn.execute("CREATE TABLE should_fail (id TEXT)")
+        assert not populated_db.with_suffix(".db-wal").exists()
+        assert not populated_db.with_suffix(".db-shm").exists()
+    finally:
+        await instance.close()
+
+
 async def test_health_check_false_when_db_missing(tmp_path, monkeypatch):
     missing = tmp_path / "missing.db"
     monkeypatch.setattr(ddc, "DB_PATH", str(missing))

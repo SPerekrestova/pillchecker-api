@@ -26,7 +26,13 @@ async def check(drug_names: list[str]) -> dict[str, Any]:
             "coverage_summary": dict(_EMPTY_COVERAGE),
         }
 
-    unique_names = list(dict.fromkeys(drug_names))
+    unique_names = []
+    seen_names: set[str] = set()
+    for name in drug_names:
+        key = name.casefold()
+        if key not in seen_names:
+            seen_names.add(key)
+            unique_names.append(name)
     rxcui_results = await asyncio.gather(
         *[rxnorm_client.get_rxcui(name) for name in unique_names],
         return_exceptions=True,

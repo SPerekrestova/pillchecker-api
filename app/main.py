@@ -38,6 +38,8 @@ async def lifespan(app: FastAPI):
     severity_classifier.load_model()
     logger.info("Severity classifier loaded: %s", severity_classifier.is_loaded())
     logger.info("Connecting to DDInter SQLite database...")
+    # The baked DDInter DB is required for production startup; missing file
+    # errors should fail the revision instead of silently degrading coverage.
     await ddinter_db.client.connect()
     logger.info("DDInter SQLite connected: %s", await ddinter_db.client.health_check())
     yield

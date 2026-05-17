@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import aiosqlite
 
@@ -21,7 +23,12 @@ def _escape_fts5(query: str) -> str:
 
 
 class DDInterDatabase:
-    """Async handle for the DDInter SQLite database."""
+    """Async handle for the DDInter SQLite database.
+
+    One process currently owns one aiosqlite connection, so concurrent SELECTs
+    serialize through that connection's worker thread. Keep that simple shape
+    unless Cloud Run P99s show the need for a small read-only connection pool.
+    """
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
@@ -37,9 +44,8 @@ class DDInterDatabase:
             if not os.path.exists(self.db_path):
                 logger.error("DDInter database not found at %s", self.db_path)
                 raise FileNotFoundError(f"DDInter database not found: {self.db_path}")
-            conn = await aiosqlite.connect(self.db_path)
+            conn = await aiosqlite.connect(_readonly_immutable_uri(self.db_path), uri=True)
             conn.row_factory = aiosqlite.Row
-            await conn.execute("PRAGMA journal_mode = WAL")
             self._conn = conn
             logger.info("Connected to DDInter SQLite at %s", self.db_path)
 
@@ -139,3 +145,8 @@ class DDInterDatabase:
 
 
 client = DDInterDatabase()
+
+
+def _readonly_immutable_uri(db_path: str) -> str:
+    absolute_path = Path(db_path).resolve()
+    return f"file:{quote(str(absolute_path), safe='/')}?mode=ro&immutable=1"

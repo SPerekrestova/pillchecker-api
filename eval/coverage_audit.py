@@ -69,39 +69,41 @@ async def main_async(args: argparse.Namespace) -> int:
     from app.clients import ddinter_db
 
     if args.db_path:
+        await ddinter_db.client.close()
         ddinter_db.client.db_path = args.db_path
-        ddinter_db.client._conn = None
     elif os.environ.get("INTERACTION_DB_PATH"):
+        await ddinter_db.client.close()
         ddinter_db.client.db_path = os.environ["INTERACTION_DB_PATH"]
-        ddinter_db.client._conn = None
 
-    names = collect_names(Path(args.dataset))
-    counts = {"rxcui": 0, "fts": 0, "unmapped": 0}
-    unmapped: list[str] = []
-    for name in sorted(names, key=str.lower):
-        bucket, _evidence = await _resolve_name(name)
-        counts[bucket] += 1
-        if bucket == "unmapped":
-            unmapped.append(name)
+    try:
+        names = collect_names(Path(args.dataset))
+        counts = {"rxcui": 0, "fts": 0, "unmapped": 0}
+        unmapped: list[str] = []
+        for name in sorted(names, key=str.lower):
+            bucket, _evidence = await _resolve_name(name)
+            counts[bucket] += 1
+            if bucket == "unmapped":
+                unmapped.append(name)
 
-    total = sum(counts.values())
-    mapped = counts["rxcui"] + counts["fts"]
-    coverage = mapped / total if total else 0.0
-    print(json.dumps({
-        "dataset": args.dataset,
-        "total": total,
-        "ddinter_via_rxcui": counts["rxcui"],
-        "ddinter_via_fts": counts["fts"],
-        "unmapped_count": counts["unmapped"],
-        "coverage": coverage,
-        "threshold": args.threshold,
-    }, indent=2, sort_keys=True))
-    if unmapped:
-        print("UNMAPPED:", file=sys.stderr)
-        for name in unmapped:
-            print(f"  {name}", file=sys.stderr)
-    await ddinter_db.client.close()
-    return 0 if coverage >= args.threshold else 1
+        total = sum(counts.values())
+        mapped = counts["rxcui"] + counts["fts"]
+        coverage = mapped / total if total else 0.0
+        print(json.dumps({
+            "dataset": args.dataset,
+            "total": total,
+            "ddinter_via_rxcui": counts["rxcui"],
+            "ddinter_via_fts": counts["fts"],
+            "unmapped_count": counts["unmapped"],
+            "coverage": coverage,
+            "threshold": args.threshold,
+        }, indent=2, sort_keys=True))
+        if unmapped:
+            print("UNMAPPED:", file=sys.stderr)
+            for name in unmapped:
+                print(f"  {name}", file=sys.stderr)
+        return 0 if coverage >= args.threshold else 1
+    finally:
+        await ddinter_db.client.close()
 
 
 def main() -> int:

@@ -50,7 +50,7 @@ class InteractionResult(BaseModel):
     rxcui_a: str | None = None
     rxcui_b: str | None = None
     severity: str
-    source: Literal["ddinter", "openfda", "unknown"] = "unknown"
+    source: Literal["ddinter", "openfda"]
     description: str
     management: str
     uncertain: bool = False
