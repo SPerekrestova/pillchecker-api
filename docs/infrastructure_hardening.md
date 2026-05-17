@@ -9,8 +9,7 @@ This note summarizes the current GitHub Actions -> Google Cloud Run pipeline and
 - Image registry: `europe-west1-docker.pkg.dev/<GCP_PROJECT_ID>/pillchecker-repo/api`.
 - Runtime target: Cloud Run service `pillchecker-api` in `europe-west1`.
 - Runtime secrets: `API_KEY` and `HF_TOKEN` are mounted from Secret Manager.
-- DrugBank DB source: Docker build arg `DRUGBANK_DB_REPO`; it must point to an explicit GitHub release repo that publishes a `drugbank.db` asset.
-- DrugBank DB release auth: GitHub Actions requires `DRUGBANK_DB_TOKEN` before Docker build/deploy jobs run against the configured release source.
+- Interaction DB source: Docker build args `INTERACTION_DB_REPO` and `INTERACTION_DB_TAG`; they must point to an explicit GitHub release repo/tag that publishes a public `ddinter.db` asset.
 
 ## 1. IAM permissions: principle of least privilege
 
@@ -65,28 +64,27 @@ Audit logs are currently generated as JSON strings in `stdout`.
 Completed improvements:
 
 - Runtime uses the non-root `pillchecker` user in `Dockerfile`.
-- DrugBank interactions use direct SQLite integration instead of a Node.js MCP child process.
-- The production image bakes the pinned DrugBank SQLite database at build time.
+- DDInter interactions use direct SQLite integration.
+- The production image bakes the pinned DDInter SQLite database at build time.
 
 Remaining recommendations:
 
-- Keep `DRUGBANK_DB_TAG` pinned for reproducibility.
-- Configure `DRUGBANK_DB_REPO` to a maintained release source instead of relying on an upstream default.
-- Configure `DRUGBANK_DB_TOKEN` before enabling CI image builds and Cloud Run deploys for the explicit DB release source.
-- Rebuild images when the pinned DrugBank release changes.
+- Keep `INTERACTION_DB_TAG` pinned for reproducibility.
+- Configure `INTERACTION_DB_REPO` to a maintained release source.
+- Rebuild images when the pinned DDInter release changes.
 - Continue avoiding runtime downloads for required models and databases.
 
 ## 5. GitHub Actions -> GCP improvement plan
 
 Execute this later as a staged hardening pass:
 
-1. **Create a controlled DrugBank DB release source**: publish the reviewed `drugbank.db` as a private GitHub release asset or Artifact Registry object controlled by this project, then set `DRUGBANK_DB_REPO`, `DRUGBANK_DB_TAG`, and `DRUGBANK_DB_TOKEN` in GitHub Actions.
+1. **Maintain the controlled interaction DB release source**: publish the reviewed `ddinter.db` as a public GitHub release asset controlled by this project, then set `INTERACTION_DB_REPO` and `INTERACTION_DB_TAG` in GitHub Actions.
 2. **Add a preflight job**: before Docker build, query the configured release, verify the expected asset name, record its size/checksum, and fail with a clear message if it is missing.
-3. **Pin and verify the DB artifact**: add a required checksum secret or repository variable such as `DRUGBANK_DB_SHA256`; have `scripts/download_drugbank_db.py` or the Docker build verify it after download.
-4. **Split build and deploy gates**: run local integration tests whenever a DB artifact and token are configured, but deploy to Cloud Run only after unit tests, image build, integration smoke tests, GCP auth, and DB checksum verification pass.
+3. **Pin and verify the DB artifact**: add a required checksum secret or repository variable such as `INTERACTION_DB_SHA256`; have `scripts/download_interaction_db.py` or the Docker build verify it after download.
+4. **Split build and deploy gates**: run local integration tests whenever a DB artifact is configured, but deploy to Cloud Run only after unit tests, image build, integration smoke tests, GCP auth, and DB checksum verification pass.
 5. **Harden Cloud Run deployment flags**: add HTTP startup/liveness probes, explicit runtime service account, minimum/maximum instance policy, and revision labels containing Git SHA, DB tag, and dataset/model versions.
 6. **Add post-deploy smoke tests**: after deployment, call `/health`, `/health/data`, and one authenticated `/interactions` smoke request against the Cloud Run URL; roll back or fail the workflow if they do not pass.
-7. **Improve observability**: add structured severity fields, log the DB tag/checksum at startup, and create Cloud Logging alerts for startup failures, DrugBank connection failures, and repeated 5xx responses.
+7. **Improve observability**: add structured severity fields, log the DB tag/checksum at startup, and create Cloud Logging alerts for startup failures, DDInter connection failures, and repeated 5xx responses.
 
 ## 6. Network security
 
