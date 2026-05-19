@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SPerekrestova/pillchecker-api/eval/interaction_label_candidates.schema.json",
+  "title": "PillChecker interaction label candidates",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["run_id", "dataset_revision", "timestamp_utc", "candidates", "errors"],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "dataset_revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "record_id",
+          "drug_a",
+          "drug_b",
+          "candidate_status",
+          "review_status",
+          "is_ground_truth"
+        ],
+        "properties": {
+          "record_id": {"type": "string"},
+          "drug_a": {"type": "string", "minLength": 1},
+          "drug_b": {"type": "string", "minLength": 1},
+          "rxcui_a": {"type": ["string", "null"], "pattern": "^[0-9]+$"},
+          "rxcui_b": {"type": ["string", "null"], "pattern": "^[0-9]+$"},
+          "ddinter": {
+            "type": ["object", "null"],
+            "additionalProperties": true
+          },
+          "openfda": {
+            "type": ["object", "null"],
+            "additionalProperties": true
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "source": {"type": "string"},
+                "source_version": {"type": ["string", "null"]},
+                "url_or_id": {"type": ["string", "null"]},
+                "description": {"type": ["string", "null"]}
+              }
+            }
+          },
+          "candidate_status": {
+            "type": "string",
+            "enum": ["source_hit", "no_source_hit", "error"]
+          },
+          "suggested_interacts": {"type": ["boolean", "null"]},
+          "suggested_severity": {
+            "type": ["string", "null"],
+            "enum": ["minor", "moderate", "major", "unknown", null]
+          },
+          "review_status": {
+            "type": "string",
+            "enum": ["unreviewed"]
+          },
+          "is_ground_truth": {
+            "const": false
+          },
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "record_id": {"type": "string"},
+          "drug_a": {"type": "string"},
+          "drug_b": {"type": "string"},
+          "error_class": {"type": "string"},
+          "message": {"type": "string"}
+        }
+      }
+    }
+  }
+}

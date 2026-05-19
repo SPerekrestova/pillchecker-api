@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SPerekrestova/pillchecker-api/eval/benchmark_results.schema.json",
+  "title": "PillChecker benchmark results",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["ner", "linking", "interactions", "fp_taxonomy"],
+  "properties": {
+    "ner": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "strict",
+        "lenient",
+        "per_category",
+        "per_noise_level",
+        "confidence_sweep",
+        "score_distribution",
+        "n_records_scored"
+      ],
+      "properties": {
+        "strict": {"$ref": "#/$defs/prf"},
+        "lenient": {"$ref": "#/$defs/prf"},
+        "per_category": {"type": "object"},
+        "per_noise_level": {"type": ["object", "null"]},
+        "confidence_sweep": {"type": "object"},
+        "score_distribution": {"type": "object"},
+        "n_records_scored": {"type": "integer", "minimum": 0}
+      }
+    },
+    "linking": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "coverage",
+        "fallback_rate",
+        "nil_rate",
+        "n_link_attempts",
+        "n_drugs_total",
+        "acc_at_1",
+        "incorrect_link_rate"
+      ],
+      "properties": {
+        "coverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "fallback_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "nil_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "n_link_attempts": {"type": "integer", "minimum": 0},
+        "n_drugs_total": {"type": "integer", "minimum": 0},
+        "acc_at_1": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "incorrect_link_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "interactions": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["descriptive", "accuracy", "seed_smoke"],
+      "properties": {
+        "descriptive": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "total_pairs_checked",
+            "ddinter_hit_rate",
+            "openfda_hit_rate",
+            "unknown_rate",
+            "severity_distribution",
+            "uncertain_rate",
+            "records_with_any_interaction"
+          ],
+          "properties": {
+            "total_pairs_checked": {"type": "integer", "minimum": 0},
+            "ddinter_hit_rate": {"type": "number", "minimum": 0, "maximum": 1},
+            "openfda_hit_rate": {"type": "number", "minimum": 0, "maximum": 1},
+            "unknown_rate": {"type": "number", "minimum": 0, "maximum": 1},
+            "severity_distribution": {"$ref": "#/$defs/severity_counts"},
+            "uncertain_rate": {"type": "number", "minimum": 0, "maximum": 1},
+            "records_with_any_interaction": {"type": "integer", "minimum": 0}
+          }
+        },
+        "accuracy": {"type": ["object", "null"]},
+        "seed_smoke": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["recall", "false_alarm_rate", "severity_accuracy", "missed_pairs"],
+          "properties": {
+            "recall": {"type": "number", "minimum": 0, "maximum": 1},
+            "false_alarm_rate": {"type": "number", "minimum": 0, "maximum": 1},
+            "severity_accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+            "missed_pairs": {"type": "array"}
+          }
+        }
+      }
+    },
+    "fp_taxonomy": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "brand",
+        "salt",
+        "form",
+        "mfg",
+        "numeric",
+        "excipient",
+        "other",
+        "total_fp",
+        "n_records_scored"
+      ],
+      "properties": {
+        "brand": {"$ref": "#/$defs/taxonomy_bucket"},
+        "salt": {"$ref": "#/$defs/taxonomy_bucket"},
+        "form": {"$ref": "#/$defs/taxonomy_bucket"},
+        "mfg": {"$ref": "#/$defs/taxonomy_bucket"},
+        "numeric": {"$ref": "#/$defs/taxonomy_bucket"},
+        "excipient": {"$ref": "#/$defs/taxonomy_bucket"},
+        "other": {"$ref": "#/$defs/taxonomy_bucket"},
+        "total_fp": {"type": "integer", "minimum": 0},
+        "n_records_scored": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "prf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["precision", "recall", "f1"],
+      "properties": {
+        "precision": {"type": "number", "minimum": 0, "maximum": 1},
+        "recall": {"type": "number", "minimum": 0, "maximum": 1},
+        "f1": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "severity_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minor", "moderate", "major", "unknown"],
+      "properties": {
+        "minor": {"type": "integer", "minimum": 0},
+        "moderate": {"type": "integer", "minimum": 0},
+        "major": {"type": "integer", "minimum": 0},
+        "unknown": {"type": "integer", "minimum": 0}
+      }
+    },
+    "taxonomy_bucket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "examples"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "examples": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}
