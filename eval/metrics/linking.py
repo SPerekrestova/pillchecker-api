@@ -20,17 +20,24 @@ def compute(predictions: list[dict], dataset: list[dict]) -> dict:
     incorrect_link_rate = None
     if records_with_gt:
         acc_values = []
-        expected_all = set()
+        incorrect = 0
+        predicted_with_rxcui_total = 0
         for record in records_with_gt:
             expected = {str(value) for value in record.get("expected_rxcuis", [])}
-            expected_all.update(expected)
             pred = predictions_by_id.get(str(record.get("id")), {})
-            predicted = {str(drug.get("rxcui")) for drug in pred.get("drugs", []) if drug.get("rxcui")}
+            predicted = set()
+            for drug in pred.get("drugs", []):
+                rxcui = drug.get("rxcui")
+                if not rxcui:
+                    continue
+                predicted_with_rxcui_total += 1
+                rxcui_str = str(rxcui)
+                predicted.add(rxcui_str)
+                if rxcui_str not in expected:
+                    incorrect += 1
             acc_values.append(len(expected & predicted) / len(expected) if expected else 0.0)
         acc_at_1 = sum(acc_values) / len(acc_values)
-        predicted_with_rxcui = [drug for drug in drugs if drug.get("rxcui")]
-        incorrect = sum(1 for drug in predicted_with_rxcui if str(drug.get("rxcui")) not in expected_all)
-        incorrect_link_rate = _rate(incorrect, len(predicted_with_rxcui))
+        incorrect_link_rate = _rate(incorrect, predicted_with_rxcui_total)
 
     return {
         "coverage": _rate(resolved, len(drugs)),

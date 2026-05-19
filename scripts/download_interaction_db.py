@@ -116,7 +116,11 @@ def download_release_asset(
     asset_url = _find_asset_url(release, asset)
     _download_asset(asset_url, output, token)
     if sha256:
-        _verify_sha256(output, sha256)
+        try:
+            _verify_sha256(output, sha256)
+        except Exception:
+            output.unlink(missing_ok=True)
+            raise
     return output
 
 

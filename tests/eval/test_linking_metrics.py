@@ -45,3 +45,26 @@ def test_linking_gt_metrics_when_expected_rxcuis_present():
     assert result["acc_at_1"] == 1.0
     assert result["fallback_rate"] == 0.5
     assert result["incorrect_link_rate"] == 0.5
+
+
+def test_incorrect_link_rate_respects_record_boundaries():
+    predictions = [
+        {
+            "record_id": "1",
+            "drugs": [{"name": "wrong-for-record-1", "rxcui": "222", "source": "ner"}],
+            "link_attempts": [{"name": "wrong-for-record-1", "rxcui": "222"}],
+        },
+        {
+            "record_id": "2",
+            "drugs": [{"name": "drug-2", "rxcui": "222", "source": "ner"}],
+            "link_attempts": [{"name": "drug-2", "rxcui": "222"}],
+        },
+    ]
+    dataset = [
+        {"id": "1", "expected_rxcuis": ["111"]},
+        {"id": "2", "expected_rxcuis": ["222"]},
+    ]
+
+    result = linking.compute(predictions, dataset)
+
+    assert result["incorrect_link_rate"] == 0.5
