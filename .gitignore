@@ -9,6 +9,7 @@ venv/
 .env
 data/ddinter/*.tsv
 data/ddinter/*.csv
+data/ddinter.db
 models/
 *.pt
 *.bin

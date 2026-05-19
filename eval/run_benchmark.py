@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -31,6 +32,7 @@ from eval.metrics import fp_taxonomy
 from eval.metrics import interactions as interaction_metrics
 from eval.metrics import linking as linking_metrics
 from eval.metrics import ner as ner_metrics
+from scripts import download_interaction_db
 
 ELAPSED_KEYS = (
     "ocr_clean",
@@ -384,7 +386,7 @@ async def _main_async(args: argparse.Namespace) -> int:
     if args.limit is not None:
         records = records[:args.limit]
 
-    if not await ddinter_db.client.health_check():
+    if not await ensure_ddinter_db(args):
         print("DDInter DB is missing or unreadable", file=sys.stderr)
         return 3
     if not ner_model.is_loaded():
@@ -422,6 +424,44 @@ async def _main_async(args: argparse.Namespace) -> int:
     return 0
 
 
+async def ensure_ddinter_db(args: argparse.Namespace) -> bool:
+    """Ensure the local DDInter DB exists, optionally from the GitHub release source."""
+    if args.ddinter_db_output:
+        ddinter_db.DB_PATH = args.ddinter_db_output
+        ddinter_db.client.db_path = args.ddinter_db_output
+        ddinter_db.client._conn = None
+
+    if await ddinter_db.client.health_check():
+        return True
+
+    repo = args.ddinter_db_repo or os.environ.get("INTERACTION_DB_REPO")
+    tag = args.ddinter_db_tag or os.environ.get("INTERACTION_DB_TAG")
+    if args.no_ddinter_db_download or not repo or not tag:
+        return False
+
+    output = Path(args.ddinter_db_output or ddinter_db.client.db_path)
+    try:
+        download_interaction_db.download_release_asset(
+            repo=repo,
+            tag=tag,
+            output=output,
+            asset=args.ddinter_db_asset,
+            token=os.environ.get("GITHUB_TOKEN"),
+            sha256=args.ddinter_db_sha256 or os.environ.get("INTERACTION_DB_SHA256"),
+        )
+    except Exception as exc:
+        print(
+            f"Failed to download DDInter DB from GitHub release {repo}@{tag}: {exc}",
+            file=sys.stderr,
+        )
+        return False
+
+    ddinter_db.DB_PATH = str(output)
+    ddinter_db.client.db_path = str(output)
+    ddinter_db.client._conn = None
+    return await ddinter_db.client.health_check()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", default=None, help="Pinned HF dataset revision.")
@@ -434,6 +474,32 @@ def main() -> int:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--random-seed", default=None)
     parser.add_argument("--seed-cases", default=str(DEFAULT_SEED_CASES))
+    parser.add_argument(
+        "--ddinter-db-repo",
+        default=None,
+        help="GitHub repo that publishes ddinter.db; defaults to INTERACTION_DB_REPO.",
+    )
+    parser.add_argument(
+        "--ddinter-db-tag",
+        default=None,
+        help="GitHub release tag for ddinter.db; defaults to INTERACTION_DB_TAG.",
+    )
+    parser.add_argument("--ddinter-db-asset", default=download_interaction_db.DEFAULT_ASSET)
+    parser.add_argument(
+        "--ddinter-db-output",
+        default=None,
+        help="Local DDInter DB path; defaults to app client INTERACTION_DB_PATH.",
+    )
+    parser.add_argument(
+        "--ddinter-db-sha256",
+        default=None,
+        help="Expected DDInter DB SHA256; defaults to INTERACTION_DB_SHA256.",
+    )
+    parser.add_argument(
+        "--no-ddinter-db-download",
+        action="store_true",
+        help="Fail if the local DDInter DB is missing instead of using the GitHub release source.",
+    )
     args = parser.parse_args()
     return asyncio.run(_main_async(args))
 

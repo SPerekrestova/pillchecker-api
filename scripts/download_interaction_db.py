@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -83,24 +84,72 @@ def _download_asset(asset_url: str, output: Path, token: str | None) -> None:
         _copy_response(response, output)
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verify_sha256(path: Path, expected: str) -> None:
+    actual = _sha256(path)
+    if actual.casefold() != expected.casefold():
+        raise RuntimeError(
+            f"Checksum mismatch for {path}: expected {expected}, got {actual}"
+        )
+
+
+def download_release_asset(
+    *,
+    repo: str,
+    tag: str,
+    output: Path,
+    asset: str = DEFAULT_ASSET,
+    token: str | None = None,
+    sha256: str | None = None,
+) -> Path:
+    release = _load_release(repo, tag, token)
+    asset_url = _find_asset_url(release, asset)
+    _download_asset(asset_url, output, token)
+    if sha256:
+        _verify_sha256(output, sha256)
+    return output
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--asset", default=DEFAULT_ASSET)
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--sha256",
+        default=os.environ.get("INTERACTION_DB_SHA256"),
+        help="Optional expected SHA256 for the downloaded asset.",
+    )
     args = parser.parse_args()
 
     # Public release; token is optional and only raises GitHub API limits.
     token = os.environ.get("GITHUB_TOKEN")
     try:
-        release = _load_release(args.repo, args.tag, token)
-        asset_url = _find_asset_url(release, args.asset)
-        _download_asset(asset_url, Path(args.output), token)
+        download_release_asset(
+            repo=args.repo,
+            tag=args.tag,
+            asset=args.asset,
+            output=Path(args.output),
+            token=token,
+            sha256=args.sha256,
+        )
     except HTTPError as exc:
         raise SystemExit(
             f"Failed to download {args.asset} from {args.repo}@{args.tag}: HTTP {exc.code}"
         ) from exc
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 if __name__ == "__main__":

@@ -22,11 +22,13 @@ WORKDIR /app/data
 # Download a pinned DDInter SQLite DB from the project's release source.
 ARG INTERACTION_DB_REPO
 ARG INTERACTION_DB_TAG
+ARG INTERACTION_DB_SHA256
 COPY scripts/download_interaction_db.py /tmp/download_interaction_db.py
 RUN --mount=type=secret,id=github_token,required=false \
     test -n "${INTERACTION_DB_REPO}" || { echo "INTERACTION_DB_REPO build arg is required"; exit 1; }; \
     test -n "${INTERACTION_DB_TAG}" || { echo "INTERACTION_DB_TAG build arg is required"; exit 1; }; \
     if [ -f /run/secrets/github_token ]; then export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; fi; \
+    if [ -n "${INTERACTION_DB_SHA256}" ]; then export INTERACTION_DB_SHA256="${INTERACTION_DB_SHA256}"; fi; \
     python /tmp/download_interaction_db.py \
       --repo "${INTERACTION_DB_REPO}" \
       --tag "${INTERACTION_DB_TAG}" \

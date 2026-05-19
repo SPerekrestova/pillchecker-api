@@ -63,7 +63,7 @@ These rules are authoritative for AI agents working in this repository.
    - optional markdown summary or plots
 4. Root-level files in the bucket should be human-readable summaries only, such as `BENCHMARK.md`.
 5. If a result must be superseded, write a new run and mark the old one as superseded in a summary; do not overwrite it.
-6. Tier 1 benchmark entrypoints are `eval/prepare_interaction_labels.py` for review-only interaction candidates and `eval/run_benchmark.py` for manifest-backed benchmark runs. Generated candidate JSON and local `benchmark-results/` directories should stay out of GitHub unless a human explicitly changes their lifecycle.
+6. Tier 1 benchmark entrypoints are `eval/prepare_interaction_labels.py` for review-only interaction candidates and `eval/run_benchmark.py` for manifest-backed benchmark runs. Generated candidate JSON and local `benchmark-results/` directories should stay out of GitHub unless a human explicitly changes their lifecycle. The benchmark runner uses HF for dataset/result artifacts and GitHub Releases, via `INTERACTION_DB_REPO`/`INTERACTION_DB_TAG`, for `ddinter.db`.
 
 ## Cleanup rules
 

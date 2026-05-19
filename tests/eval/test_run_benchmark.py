@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 import pytest
@@ -146,3 +147,60 @@ async def test_run_benchmark_records_per_record_errors(monkeypatch):
         "error_class": "RuntimeError",
         "message": "bad OCR",
     }]
+
+
+@pytest.mark.asyncio
+async def test_ensure_ddinter_db_downloads_from_github_release(monkeypatch, tmp_path: Path):
+    checks = iter([False, True])
+    downloads = []
+
+    async def fake_health_check():
+        return next(checks)
+
+    def fake_download_release_asset(**kwargs):
+        downloads.append(kwargs)
+        kwargs["output"].write_bytes(b"sqlite")
+
+    monkeypatch.setattr(run_benchmark.ddinter_db.client, "health_check", fake_health_check)
+    monkeypatch.setattr(run_benchmark.download_interaction_db, "download_release_asset", fake_download_release_asset)
+
+    db_path = tmp_path / "ddinter.db"
+    args = argparse.Namespace(
+        ddinter_db_output=str(db_path),
+        ddinter_db_repo="SPerva/ddinter-release",
+        ddinter_db_tag="v1",
+        ddinter_db_asset="ddinter.db",
+        ddinter_db_sha256="abc123",
+        no_ddinter_db_download=False,
+    )
+
+    assert await run_benchmark.ensure_ddinter_db(args) is True
+    assert downloads == [{
+        "repo": "SPerva/ddinter-release",
+        "tag": "v1",
+        "output": db_path,
+        "asset": "ddinter.db",
+        "token": None,
+        "sha256": "abc123",
+    }]
+    assert run_benchmark.ddinter_db.client.db_path == str(db_path)
+
+
+@pytest.mark.asyncio
+async def test_ensure_ddinter_db_fails_without_release_source(monkeypatch):
+    async def fake_health_check():
+        return False
+
+    monkeypatch.setattr(run_benchmark.ddinter_db.client, "health_check", fake_health_check)
+    monkeypatch.delenv("INTERACTION_DB_REPO", raising=False)
+    monkeypatch.delenv("INTERACTION_DB_TAG", raising=False)
+    args = argparse.Namespace(
+        ddinter_db_output=None,
+        ddinter_db_repo=None,
+        ddinter_db_tag=None,
+        ddinter_db_asset="ddinter.db",
+        ddinter_db_sha256=None,
+        no_ddinter_db_download=False,
+    )
+
+    assert await run_benchmark.ensure_ddinter_db(args) is False
