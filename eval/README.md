@@ -10,6 +10,8 @@ This file describes how the PillChecker OCR-to-ingredient pipeline and downstrea
 | [`hf://buckets/SPerva/pillchecker-experiments`](https://huggingface.co/buckets/SPerva/pillchecker-experiments) | Historical benchmark result runs and reports. |
 | [`benchmark_record.schema.json`](benchmark_record.schema.json) | Expected shape for benchmark input records. |
 | [`benchmark_run_manifest.schema.json`](benchmark_run_manifest.schema.json) | Expected shape for benchmark run metadata. |
+| [`benchmark_results.schema.json`](benchmark_results.schema.json) | Expected shape for Tier 1 benchmark result summaries. |
+| [`interaction_label_candidates.schema.json`](interaction_label_candidates.schema.json) | Expected shape for review-only interaction label candidate queues. |
 
 The current published benchmark sample contains 500 synthesized pack-label texts generated from [MattBastar/Medicine_Details](https://huggingface.co/datasets/MattBastar/Medicine_Details). Each record currently includes `id`, `category`, `ocr_text`, `expected_names`, and `source_composition`. The sample has 199 unique expected ingredient names; an audit found exact RxNorm matches for 183 of them and 16 names requiring review.
 
@@ -67,6 +69,17 @@ Interaction evaluation requires `expected_interactions` and known-safe pairs. `i
 4. source routing accuracy between DDInter and OpenFDA fallback evidence.
 
 Until this ground truth exists, interaction metrics should be treated as smoke tests rather than benchmark claims.
+
+## Tier 1 runner
+
+Tier 1 benchmark entrypoints:
+
+1. `python -m eval.prepare_interaction_labels --revision <hf-rev> --out candidates.json` generates review-only interaction candidates for dual and multi-ingredient records. DDInter and OpenFDA hits are source suggestions only; emitted candidates always use `is_ground_truth: false` and `review_status: "unreviewed"` until a human reviewer promotes them into canonical `expected_interactions` or `known_safe_pairs`.
+2. `python -m eval.run_benchmark --revision <hf-rev> --limit 25 --local-only` runs the benchmark pipeline locally and writes `results.json`, `manifest.json`, `predictions.jsonl`, `errors.jsonl`, and `summary.md` under `benchmark-results/<run-id>/`.
+
+`predictions.jsonl` includes `elapsed_ms` keys for `ocr_clean`, `ner`, `rxnorm`, `ddinter_rxcui`, `ddinter_fts`, `openfda`, `severity`, `analyze`, `interactions`, and `total`. These measurements intentionally overlap: `analyze` includes OCR, NER, and RxNorm work; `interactions` includes DDInter, OpenFDA, and severity work; `total` includes the top-level phases plus benchmark overhead. Do not sum the keys as a disjoint latency partition.
+
+Use `--local-only` for development and smoke runs. Without `--local-only`, result artifacts upload to the experiments bucket under an immutable `benchmark-results/<YYYY-MM-DD>/<run-id>/` prefix; do not commit generated candidate JSON or benchmark result directories to GitHub.
 
 ## Experiment workflow
 
