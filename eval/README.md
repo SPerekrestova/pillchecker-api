@@ -81,7 +81,22 @@ The runner loads benchmark inputs from the HF dataset and writes benchmark outpu
 
 `predictions.jsonl` includes `elapsed_ms` keys for `ocr_clean`, `ner`, `rxnorm`, `ddinter_rxcui`, `ddinter_fts`, `openfda`, `severity`, `analyze`, `interactions`, and `total`. These measurements intentionally overlap: `analyze` includes OCR, NER, and RxNorm work; `interactions` includes DDInter, OpenFDA, and severity work; `total` includes the top-level phases plus benchmark overhead. Do not sum the keys as a disjoint latency partition.
 
-Use `--local-only` for development and smoke runs. Without `--local-only`, result artifacts upload to the experiments bucket under an immutable `benchmark-results/<YYYY-MM-DD>/<run-id>/` prefix; do not commit generated candidate JSON or benchmark result directories to GitHub.
+Use `--record-timeout-seconds` to bound each input record so a stuck RxNorm, OpenFDA, or model path records a `record_timeout` error instead of hanging the whole run. Use `--local-only` for development and smoke runs. Without `--local-only`, result artifacts upload to the experiments bucket under an immutable `benchmark-results/<YYYY-MM-DD>/<run-id>/` prefix; do not commit generated candidate JSON or benchmark result directories to GitHub.
+
+## GCP Tier 1 execution
+
+The canonical cloud path is `.github/workflows/tier1-benchmark.yml`, dispatched manually from GitHub Actions. It builds the `benchmark-runner` Docker target, deploys Cloud Run Job `pillchecker-benchmark-tier1` in `europe-west1`, runs `python -m eval.run_benchmark`, and validates uploaded artifacts in `hf://buckets/SPerva/pillchecker-experiments`.
+
+Manual inputs:
+
+1. `dataset_revision`: required pinned HF dataset revision.
+2. `limit`: default `25`; use `1` for a smoke dispatch.
+3. `run_id`: optional immutable run id; generated from the GitHub run when blank.
+4. `concurrency`: default `8`.
+5. `upload`: default `true`; keep enabled for validation.
+6. `record_timeout_seconds`: default `120`.
+
+The workflow uses Secret Manager `HF_TOKEN`, GitHub/GCP WIF secrets, and `INTERACTION_DB_REPO`, `INTERACTION_DB_TAG`, plus optional `INTERACTION_DB_SHA256`. The HF Space is not a benchmark worker and is not a result store; benchmark execution belongs in Cloud Run Jobs and immutable outputs belong in the HF experiments bucket.
 
 ## Experiment workflow
 
@@ -108,5 +123,5 @@ Next evaluation work:
 1. Review the 16 non-exact RxNorm ingredient names and then update the canonical HF benchmark records.
 2. Add independent `clean_text` references for OCR-noise cases.
 3. Expand interaction-positive and known-safe ingredient pairs beyond the seed set.
-4. Add benchmark runners that read the HF dataset, write manifest-backed bucket results, and can be reproduced from a GitHub commit.
+4. Dispatch the GCP Tier 1 workflow with `limit=1` and then `limit=25`; require an empty `errors.jsonl` for the smoke gate before reporting metrics.
 5. Reintroduce any GLiNER comparison only with reproducible code, configuration, and stored artifacts.

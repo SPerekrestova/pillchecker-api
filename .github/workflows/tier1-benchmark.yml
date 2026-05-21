@@ -1,0 +1,286 @@
+name: Tier 1 Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_revision:
+        description: "Pinned SPerva/pillchecker-ner-benchmark revision to evaluate."
+        required: true
+        type: string
+      limit:
+        description: "Maximum benchmark records to run."
+        required: false
+        default: "25"
+        type: string
+      run_id:
+        description: "Optional immutable run id. Generated from the workflow run when blank."
+        required: false
+        default: ""
+        type: string
+      concurrency:
+        description: "Concurrent benchmark records inside the Cloud Run Job."
+        required: false
+        default: "8"
+        type: string
+      upload:
+        description: "Upload artifacts to the HF experiments bucket."
+        required: false
+        default: true
+        type: boolean
+      record_timeout_seconds:
+        description: "Per-record wall-clock timeout."
+        required: false
+        default: "120"
+        type: string
+
+env:
+  REGION: europe-west1
+  BENCHMARK_JOB: pillchecker-benchmark-tier1
+  BENCHMARK_BUCKET: hf://buckets/SPerva/pillchecker-experiments
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      run_id: ${{ steps.ids.outputs.run_id }}
+      output_prefix: ${{ steps.ids.outputs.output_prefix }}
+      image_tag: ${{ steps.ids.outputs.image_tag }}
+    steps:
+      - name: Check required secrets
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          INTERACTION_DB_REPO: ${{ secrets.INTERACTION_DB_REPO }}
+          INTERACTION_DB_TAG: ${{ secrets.INTERACTION_DB_TAG }}
+        run: |
+          missing=0
+          for name in GCP_PROJECT_ID WIF_PROVIDER WIF_SERVICE_ACCOUNT HF_TOKEN INTERACTION_DB_REPO INTERACTION_DB_TAG; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name secret is required for Tier 1 benchmark execution"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Compute immutable run ids
+        id: ids
+        env:
+          INPUT_RUN_ID: ${{ inputs.run_id }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          if [ -n "$INPUT_RUN_ID" ]; then
+            RUN_ID="$INPUT_RUN_ID"
+          else
+            RUN_ID="tier1-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
+          case "$RUN_ID" in
+            *[!A-Za-z0-9_.:-]*)
+              echo "::error::run_id may contain only letters, numbers, underscore, dot, colon, and dash"
+              exit 2
+              ;;
+          esac
+          OUTPUT_PREFIX="benchmark-results/$(date -u +%F)/$RUN_ID/"
+          IMAGE_TAG="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/pillchecker-repo/tier1-benchmark:${GITHUB_SHA}"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "output_prefix=$OUTPUT_PREFIX" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "Run id: $RUN_ID"
+          echo "Output prefix: ${BENCHMARK_BUCKET}/$OUTPUT_PREFIX"
+
+      - name: Verify DDInter release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INTERACTION_DB_REPO: ${{ secrets.INTERACTION_DB_REPO }}
+          INTERACTION_DB_TAG: ${{ secrets.INTERACTION_DB_TAG }}
+          INTERACTION_DB_SHA256: ${{ secrets.INTERACTION_DB_SHA256 }}
+        run: |
+          mkdir -p /tmp/ddinter-preflight
+          gh release download "$INTERACTION_DB_TAG" \
+            --repo "$INTERACTION_DB_REPO" \
+            --pattern ddinter.db \
+            --dir /tmp/ddinter-preflight \
+            --clobber
+          test -s /tmp/ddinter-preflight/ddinter.db
+          size="$(wc -c < /tmp/ddinter-preflight/ddinter.db)"
+          echo "ddinter.db size: $size bytes"
+          if [ -n "$INTERACTION_DB_SHA256" ]; then
+            echo "$INTERACTION_DB_SHA256  /tmp/ddinter-preflight/ddinter.db" | sha256sum -c -
+          fi
+
+  build-benchmark-image:
+    name: Build Benchmark Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: preflight
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push benchmark runner
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: benchmark-runner
+          push: true
+          tags: ${{ needs.preflight.outputs.image_tag }}
+          build-args: |
+            INTERACTION_DB_REPO=${{ secrets.INTERACTION_DB_REPO }}
+            INTERACTION_DB_TAG=${{ secrets.INTERACTION_DB_TAG }}
+            INTERACTION_DB_SHA256=${{ secrets.INTERACTION_DB_SHA256 }}
+          cache-from: |
+            type=registry,ref=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/tier1-benchmark:cache-main
+          cache-to: type=registry,ref=${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/tier1-benchmark:cache-main,mode=max
+
+  run-benchmark-job:
+    name: Execute Cloud Run Job
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [preflight, build-benchmark-image]
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      execution_name: ${{ steps.execute.outputs.execution_name }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy benchmark Cloud Run Job
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          CLOUD_RUN_SERVICE_ACCOUNT: ${{ secrets.CLOUD_RUN_SERVICE_ACCOUNT }}
+          INTERACTION_DB_REPO: ${{ secrets.INTERACTION_DB_REPO }}
+          INTERACTION_DB_TAG: ${{ secrets.INTERACTION_DB_TAG }}
+          INTERACTION_DB_SHA256: ${{ secrets.INTERACTION_DB_SHA256 }}
+          DATASET_REVISION: ${{ inputs.dataset_revision }}
+          LIMIT: ${{ inputs.limit }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+          UPLOAD: ${{ inputs.upload }}
+          RECORD_TIMEOUT_SECONDS: ${{ inputs.record_timeout_seconds }}
+          RUN_ID: ${{ needs.preflight.outputs.run_id }}
+          OUTPUT_PREFIX: ${{ needs.preflight.outputs.output_prefix }}
+          IMAGE_TAG: ${{ needs.preflight.outputs.image_tag }}
+        run: |
+          SERVICE_ACCOUNT="${CLOUD_RUN_SERVICE_ACCOUNT:-deploy-sa@${GCP_PROJECT_ID}.iam.gserviceaccount.com}"
+          ARGS="--revision=${DATASET_REVISION},--limit=${LIMIT},--concurrency=${CONCURRENCY},--run-id=${RUN_ID},--output-prefix=${OUTPUT_PREFIX},--record-timeout-seconds=${RECORD_TIMEOUT_SECONDS}"
+          if [ "$UPLOAD" != "true" ]; then
+            ARGS="${ARGS},--local-only"
+          fi
+          gcloud run jobs deploy pillchecker-benchmark-tier1 \
+            --image="$IMAGE_TAG" \
+            --region="$REGION" \
+            --tasks=1 \
+            --parallelism=1 \
+            --max-retries=0 \
+            --task-timeout=60m \
+            --memory=4Gi \
+            --cpu=2 \
+            --service-account="$SERVICE_ACCOUNT" \
+            --set-env-vars="INTERACTION_DB_REPO=${INTERACTION_DB_REPO},INTERACTION_DB_TAG=${INTERACTION_DB_TAG},INTERACTION_DB_SHA256=${INTERACTION_DB_SHA256}" \
+            --set-secrets="HF_TOKEN=HF_TOKEN:latest" \
+            --args="$ARGS"
+
+      - name: Execute benchmark Cloud Run Job
+        id: execute
+        run: |
+          execution="$(gcloud run jobs execute pillchecker-benchmark-tier1 --region="$REGION" --wait --format='value(metadata.name)')"
+          echo "execution_name=$execution" >> "$GITHUB_OUTPUT"
+          echo "Cloud Run Job execution: $execution"
+
+  validate-artifacts:
+    name: Validate HF Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [preflight, run-benchmark-job]
+    if: ${{ inputs.upload }}
+    steps:
+      - name: Validate uploaded benchmark artifacts
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          OUTPUT_PREFIX: ${{ needs.preflight.outputs.output_prefix }}
+          RUN_ID: ${{ needs.preflight.outputs.run_id }}
+          DATASET_REVISION: ${{ inputs.dataset_revision }}
+          LIMIT: ${{ inputs.limit }}
+          INTERACTION_DB_REPO: ${{ secrets.INTERACTION_DB_REPO }}
+          INTERACTION_DB_TAG: ${{ secrets.INTERACTION_DB_TAG }}
+        run: |
+          python -m pip install --quiet huggingface_hub
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from huggingface_hub import HfFileSystem
+
+          bucket = "hf://buckets/SPerva/pillchecker-experiments"
+          prefix = os.environ["OUTPUT_PREFIX"]
+          base = f"{bucket.rstrip('/')}/{prefix}"
+          required = ["manifest.json", "results.json", "predictions.jsonl", "errors.jsonl", "summary.md"]
+          fs = HfFileSystem(token=os.environ["HF_TOKEN"])
+
+          for name in required:
+              path = base + name
+              if not fs.exists(path):
+                  print(f"missing artifact: {path}", file=sys.stderr)
+                  raise SystemExit(1)
+
+          with fs.open(base + "manifest.json", "r", encoding="utf-8") as handle:
+              manifest = json.load(handle)
+          with fs.open(base + "results.json", "r", encoding="utf-8") as handle:
+              results = json.load(handle)
+          with fs.open(base + "predictions.jsonl", "r", encoding="utf-8") as handle:
+              predictions = [line for line in handle if line.strip()]
+          with fs.open(base + "errors.jsonl", "r", encoding="utf-8") as handle:
+              errors = [line for line in handle if line.strip()]
+
+          expected_limit = int(os.environ["LIMIT"])
+          checks = {
+              "run_id": manifest.get("run_id") == os.environ["RUN_ID"],
+              "dataset_revision": manifest.get("dataset_revision") == os.environ["DATASET_REVISION"],
+              "sample_size": manifest.get("sample_size") == expected_limit,
+              "git_commit": bool(manifest.get("git_commit")),
+              "model_ids": bool(manifest.get("model_ids", {}).get("ner")),
+              "ddinter_repo": manifest.get("ddinter_db", {}).get("repo") == os.environ["INTERACTION_DB_REPO"],
+              "ddinter_tag": manifest.get("ddinter_db", {}).get("tag") == os.environ["INTERACTION_DB_TAG"],
+              "output_prefix": manifest.get("bucket_output_prefix") == prefix,
+              "prediction_count": len(predictions) == expected_limit,
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          if failed:
+              print(f"artifact validation failed: {failed}", file=sys.stderr)
+              raise SystemExit(1)
+          if errors:
+              print("errors.jsonl is not empty", file=sys.stderr)
+              for line in errors[:5]:
+                  print(line.rstrip(), file=sys.stderr)
+              raise SystemExit(1)
+
+          print(f"Validated benchmark artifacts at {base}")
+          print(json.dumps(manifest.get("metrics", {}), indent=2, sort_keys=True))
+          print(json.dumps(results.get("interactions", {}).get("descriptive", {}), indent=2, sort_keys=True))
+          PY
