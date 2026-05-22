@@ -29,6 +29,7 @@ def test_tier1_benchmark_workflow_contract():
     assert "INTERACTION_DB_TAG" in workflow
     assert "INTERACTION_DB_SHA256" in workflow
     assert "BENCHMARK_FORCE_OS_EXIT=1" in workflow
+    assert "BENCHMARK_GIT_COMMIT=${GITHUB_SHA}" in workflow
     assert 'tr -d "\\r\\n"' in workflow
     assert 'INTERACTION_DB_REPO="$(printf' in workflow
     assert 'INTERACTION_DB_TAG="$(printf' in workflow
@@ -36,6 +37,7 @@ def test_tier1_benchmark_workflow_contract():
     assert "hf://buckets/SPerva/pillchecker-experiments" in workflow
     assert 'bucket = os.environ["BENCHMARK_BUCKET"]' in workflow
     assert "0 < sample_size <= expected_limit" in workflow
+    assert 'manifest.get("git_commit") not in ("", "0000000", None)' in workflow
     assert "len(predictions) == sample_size" in workflow
 
     for artifact in ("manifest.json", "results.json", "predictions.jsonl", "errors.jsonl", "summary.md"):

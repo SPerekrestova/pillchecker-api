@@ -223,7 +223,7 @@ jobs:
             --memory=4Gi \
             --cpu=2 \
             --service-account="$SERVICE_ACCOUNT" \
-            --set-env-vars="INTERACTION_DB_REPO=${INTERACTION_DB_REPO},INTERACTION_DB_TAG=${INTERACTION_DB_TAG},INTERACTION_DB_SHA256=${INTERACTION_DB_SHA256},BENCHMARK_FORCE_OS_EXIT=1" \
+            --set-env-vars="INTERACTION_DB_REPO=${INTERACTION_DB_REPO},INTERACTION_DB_TAG=${INTERACTION_DB_TAG},INTERACTION_DB_SHA256=${INTERACTION_DB_SHA256},BENCHMARK_FORCE_OS_EXIT=1,BENCHMARK_GIT_COMMIT=${GITHUB_SHA}" \
             --set-secrets="HF_TOKEN=HF_TOKEN:latest" \
             --args="$ARGS"
 
@@ -285,7 +285,7 @@ jobs:
               "run_id": manifest.get("run_id") == os.environ["RUN_ID"],
               "dataset_revision": manifest.get("dataset_revision") == os.environ["DATASET_REVISION"],
               "sample_size": 0 < sample_size <= expected_limit,
-              "git_commit": bool(manifest.get("git_commit")),
+              "git_commit": manifest.get("git_commit") not in ("", "0000000", None),
               "model_ids": bool(manifest.get("model_ids", {}).get("ner")),
               "ddinter_repo": manifest.get("ddinter_db", {}).get("repo") == os.environ["INTERACTION_DB_REPO"].strip("\r\n"),
               "ddinter_tag": manifest.get("ddinter_db", {}).get("tag") == os.environ["INTERACTION_DB_TAG"].strip("\r\n"),
