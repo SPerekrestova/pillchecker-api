@@ -82,10 +82,17 @@ class BenchmarkTrace:
     def record_error(self, stage: str, exc: Exception) -> None:
         signature = (exc.__class__.__name__, str(exc))
         if signature in self.error_signatures:
+            for item in self.pipeline_errors:
+                if item.get("error_class") == signature[0] and item.get("message") == signature[1]:
+                    stages = item.setdefault("stages", [item.get("stage")])
+                    if stage not in stages:
+                        stages.append(stage)
+                    break
             return
         self.error_signatures.add(signature)
         self.pipeline_errors.append({
             "stage": stage,
+            "stages": [stage],
             "error_class": exc.__class__.__name__,
             "message": str(exc),
         })
@@ -242,13 +249,14 @@ def _record_rxnorm_attempt(method: str):
         error: Exception | None,
         elapsed_ms: float,
     ) -> None:
-        query = args[0] if args else None
+        query = None if method == "get_drug_details" else args[0] if args else None
         rxcui = _rxnorm_rxcui(method, result)
         status = "error" if error is not None else "hit" if rxcui or _rxnorm_has_result(method, result) else "miss"
         attempt = {
             "stage": trace.phase,
             "method": method,
             "query": query,
+            "input_rxcui": args[0] if method == "get_drug_details" and args else None,
             "rxcui": rxcui,
             "status": status,
             "elapsed_ms": elapsed_ms,

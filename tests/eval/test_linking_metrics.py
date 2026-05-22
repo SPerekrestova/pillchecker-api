@@ -70,6 +70,36 @@ def test_linking_reports_rxnorm_attempt_diagnostics():
     }]
 
 
+def test_linking_ignores_get_drug_details_for_canonicalization_collisions():
+    predictions = [{
+        "record_id": "1",
+        "drugs": [{"name": "Advil", "rxcui": "5640", "source": "rxnorm_fallback"}],
+        "rxnorm_attempts": [
+            {
+                "stage": "analyze",
+                "method": "approximate_term",
+                "query": "Advil",
+                "rxcui": "5640",
+                "status": "hit",
+                "elapsed_ms": 2.0,
+            },
+            {
+                "stage": "analyze",
+                "method": "get_drug_details",
+                "query": "5640",
+                "input_rxcui": "5640",
+                "rxcui": "5640",
+                "status": "hit",
+                "elapsed_ms": 1.0,
+            },
+        ],
+    }]
+
+    result = linking.compute(predictions, [{"id": "1"}])
+
+    assert result["canonicalization_collisions"] == []
+
+
 def test_linking_nil_rate_none_without_attempts():
     result = linking.compute([{"record_id": "1", "drugs": [], "link_attempts": []}], [{"id": "1"}])
 

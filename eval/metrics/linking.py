@@ -70,7 +70,8 @@ def _rxnorm_diagnostics(attempts: list[dict]) -> dict:
         query = str(attempt.get("query") or attempt.get("name") or "")
         rxcui = attempt.get("rxcui")
         if rxcui:
-            queries_by_rxcui[str(rxcui)].add(query)
+            if method != "get_drug_details" and query:
+                queries_by_rxcui[str(rxcui)].add(query)
         elif status in {"miss", "error"}:
             unresolved.append({
                 "query": query,

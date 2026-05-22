@@ -228,6 +228,7 @@ def test_trace_pipeline_errors_dedupe_same_exception():
 
     assert trace.pipeline_errors == [{
         "stage": "openfda",
+        "stages": ["openfda", "interactions"],
         "error_class": "RuntimeError",
         "message": "same failure",
     }]
