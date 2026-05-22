@@ -23,6 +23,8 @@ def test_tier1_benchmark_workflow_contract():
     assert 'gcloud run jobs execute "${{ env.BENCHMARK_JOB }}"' in workflow
     assert "--task-timeout=60m" in workflow
     assert "HF_TOKEN=HF_TOKEN:latest" in workflow
+    assert "gcloud secrets versions add HF_TOKEN" in workflow
+    assert "--data-file=-" in workflow
     assert "INTERACTION_DB_REPO" in workflow
     assert "INTERACTION_DB_TAG" in workflow
     assert "INTERACTION_DB_SHA256" in workflow
