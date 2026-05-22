@@ -28,6 +28,7 @@ def test_tier1_benchmark_workflow_contract():
     assert "INTERACTION_DB_REPO" in workflow
     assert "INTERACTION_DB_TAG" in workflow
     assert "INTERACTION_DB_SHA256" in workflow
+    assert "BENCHMARK_FORCE_OS_EXIT=1" in workflow
     assert 'tr -d "\\r\\n"' in workflow
     assert 'INTERACTION_DB_REPO="$(printf' in workflow
     assert 'INTERACTION_DB_TAG="$(printf' in workflow

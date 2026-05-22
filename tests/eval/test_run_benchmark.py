@@ -7,6 +7,31 @@ from app.nlp import ner_model
 from eval import run_benchmark
 
 
+def test_exit_process_uses_system_exit_by_default(monkeypatch):
+    monkeypatch.delenv("BENCHMARK_FORCE_OS_EXIT", raising=False)
+
+    with pytest.raises(SystemExit) as exc:
+        run_benchmark.exit_process(3)
+
+    assert exc.value.code == 3
+
+
+def test_exit_process_can_force_os_exit_for_cloud(monkeypatch):
+    calls = []
+
+    def fake_os_exit(code):
+        calls.append(code)
+        raise RuntimeError("forced exit")
+
+    monkeypatch.setenv("BENCHMARK_FORCE_OS_EXIT", "1")
+    monkeypatch.setattr(run_benchmark.os, "_exit", fake_os_exit)
+
+    with pytest.raises(RuntimeError, match="forced exit"):
+        run_benchmark.exit_process(0)
+
+    assert calls == [0]
+
+
 @pytest.mark.asyncio
 async def test_run_benchmark_captures_trace_metrics_and_artifacts(monkeypatch, tmp_path: Path):
     records = [
