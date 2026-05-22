@@ -50,6 +50,7 @@ def test_load_benchmark_records_downloads_hf_revision(monkeypatch, tmp_path: Pat
         return str(downloaded)
 
     monkeypatch.setattr(dataset, "hf_hub_download", fake_download)
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token")
 
     records, meta = dataset.load_benchmark_records(revision="abc123")
 
@@ -59,6 +60,7 @@ def test_load_benchmark_records_downloads_hf_revision(monkeypatch, tmp_path: Pat
         "repo_type": "dataset",
         "filename": "data/benchmark.json",
         "revision": "abc123",
+        "token": "hf_test_token",
     }
     assert meta.revision == "abc123"
 
