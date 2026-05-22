@@ -14,6 +14,9 @@ def test_tier1_benchmark_workflow_contract():
     assert "concurrency:" in workflow
     assert "group: tier1-benchmark" in workflow
     assert "cancel-in-progress: false" in workflow
+    assert "image_tag:" not in workflow
+    assert "needs.preflight.outputs.image_tag" not in workflow
+    assert 'IMAGE_TAG="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/pillchecker-repo/tier1-benchmark:${GITHUB_SHA}"' in workflow
     assert "dataset_revision must not contain commas" in workflow
     assert "BENCHMARK_JOB: pillchecker-benchmark-tier1" in workflow
     assert 'gcloud run jobs deploy "${{ env.BENCHMARK_JOB }}"' in workflow

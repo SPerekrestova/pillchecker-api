@@ -52,7 +52,6 @@ jobs:
     outputs:
       run_id: ${{ steps.ids.outputs.run_id }}
       output_prefix: ${{ steps.ids.outputs.output_prefix }}
-      image_tag: ${{ steps.ids.outputs.image_tag }}
     steps:
       - name: Check required secrets
         env:
@@ -97,10 +96,8 @@ jobs:
               ;;
           esac
           OUTPUT_PREFIX="benchmark-results/$(date -u +%F)/$RUN_ID/"
-          IMAGE_TAG="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/pillchecker-repo/tier1-benchmark:${GITHUB_SHA}"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "output_prefix=$OUTPUT_PREFIX" >> "$GITHUB_OUTPUT"
-          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "Run id: $RUN_ID"
           echo "Output prefix: ${BENCHMARK_BUCKET}/$OUTPUT_PREFIX"
 
@@ -156,7 +153,7 @@ jobs:
           context: .
           target: benchmark-runner
           push: true
-          tags: ${{ needs.preflight.outputs.image_tag }}
+          tags: ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/tier1-benchmark:${{ github.sha }}
           build-args: |
             INTERACTION_DB_REPO=${{ secrets.INTERACTION_DB_REPO }}
             INTERACTION_DB_TAG=${{ secrets.INTERACTION_DB_TAG }}
@@ -199,8 +196,9 @@ jobs:
           RECORD_TIMEOUT_SECONDS: ${{ inputs.record_timeout_seconds }}
           RUN_ID: ${{ needs.preflight.outputs.run_id }}
           OUTPUT_PREFIX: ${{ needs.preflight.outputs.output_prefix }}
-          IMAGE_TAG: ${{ needs.preflight.outputs.image_tag }}
+          IMAGE_TAG: ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/tier1-benchmark:${{ github.sha }}
         run: |
+          IMAGE_TAG="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/pillchecker-repo/tier1-benchmark:${GITHUB_SHA}"
           INTERACTION_DB_REPO="$(printf '%s' "$INTERACTION_DB_REPO" | tr -d "\r\n")"
           INTERACTION_DB_TAG="$(printf '%s' "$INTERACTION_DB_TAG" | tr -d "\r\n")"
           INTERACTION_DB_SHA256="$(printf '%s' "$INTERACTION_DB_SHA256" | tr -d "\r\n")"
