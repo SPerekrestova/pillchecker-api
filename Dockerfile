@@ -25,6 +25,9 @@ ARG INTERACTION_DB_TAG
 ARG INTERACTION_DB_SHA256
 COPY scripts/download_interaction_db.py /tmp/download_interaction_db.py
 RUN --mount=type=secret,id=github_token,required=false \
+    INTERACTION_DB_REPO="$(printf '%s' "${INTERACTION_DB_REPO}" | tr -d "\r\n")"; \
+    INTERACTION_DB_TAG="$(printf '%s' "${INTERACTION_DB_TAG}" | tr -d "\r\n")"; \
+    INTERACTION_DB_SHA256="$(printf '%s' "${INTERACTION_DB_SHA256}" | tr -d "\r\n")"; \
     test -n "${INTERACTION_DB_REPO}" || { echo "INTERACTION_DB_REPO build arg is required"; exit 1; }; \
     test -n "${INTERACTION_DB_TAG}" || { echo "INTERACTION_DB_TAG build arg is required"; exit 1; }; \
     if [ -f /run/secrets/github_token ]; then export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; fi; \
