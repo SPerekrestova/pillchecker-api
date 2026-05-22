@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +47,7 @@ def load_benchmark_records(
         repo_type="dataset",
         filename=dataset_path,
         revision=revision,
+        token=os.environ.get("HF_TOKEN"),
     )
     records = _read_json_list(Path(downloaded))
     _validate_records(records)
@@ -82,4 +84,3 @@ def _validate_records(records: list[dict[str, object]]) -> None:
         for name in names:
             if not isinstance(name, str) or not name.strip():
                 raise ValueError(f"Record {index} has invalid expected_names item")
-
