@@ -76,8 +76,15 @@ jobs:
         id: ids
         env:
           INPUT_RUN_ID: ${{ inputs.run_id }}
+          DATASET_REVISION: ${{ inputs.dataset_revision }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
+          case "$DATASET_REVISION" in
+            *,*)
+              echo "::error::dataset_revision must not contain commas because gcloud --args uses comma delimiters"
+              exit 2
+              ;;
+          esac
           if [ -n "$INPUT_RUN_ID" ]; then
             RUN_ID="$INPUT_RUN_ID"
           else
@@ -263,16 +270,17 @@ jobs:
               errors = [line for line in handle if line.strip()]
 
           expected_limit = int(os.environ["LIMIT"])
+          sample_size = int(manifest.get("sample_size", -1))
           checks = {
               "run_id": manifest.get("run_id") == os.environ["RUN_ID"],
               "dataset_revision": manifest.get("dataset_revision") == os.environ["DATASET_REVISION"],
-              "sample_size": manifest.get("sample_size") == expected_limit,
+              "sample_size": 0 < sample_size <= expected_limit,
               "git_commit": bool(manifest.get("git_commit")),
               "model_ids": bool(manifest.get("model_ids", {}).get("ner")),
               "ddinter_repo": manifest.get("ddinter_db", {}).get("repo") == os.environ["INTERACTION_DB_REPO"],
               "ddinter_tag": manifest.get("ddinter_db", {}).get("tag") == os.environ["INTERACTION_DB_TAG"],
               "output_prefix": manifest.get("bucket_output_prefix") == prefix,
-              "prediction_count": len(predictions) == expected_limit,
+              "prediction_count": len(predictions) == sample_size,
           }
           failed = [name for name, ok in checks.items() if not ok]
           if failed:

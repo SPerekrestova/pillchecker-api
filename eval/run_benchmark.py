@@ -213,57 +213,57 @@ async def _run_one_with_timeout(
     *,
     record_timeout_seconds: float | None,
 ) -> tuple[dict, dict | None]:
-    if record_timeout_seconds is None:
-        return await _run_one(record, semaphore)
-    try:
-        return await asyncio.wait_for(
-            _run_one(record, semaphore),
-            timeout=record_timeout_seconds,
-        )
-    except asyncio.TimeoutError:
-        return _timeout_prediction(record, record_timeout_seconds), _timeout_error_record(
-            record,
-            record_timeout_seconds,
-        )
-
-
-async def _run_one(record: dict, semaphore: asyncio.Semaphore) -> tuple[dict, dict | None]:
     async with semaphore:
-        trace = BenchmarkTrace()
-        token = active_benchmark_trace.set(trace)
-        total_start = time.perf_counter()
-        drugs = []
-        interactions_response = None
-        error = None
+        if record_timeout_seconds is None:
+            return await _run_one(record)
         try:
-            analyze_start = time.perf_counter()
-            drugs = await drug_analyzer.analyze(str(record["ocr_text"]))
-            trace.add_elapsed("analyze", time.perf_counter() - analyze_start)
-        except Exception as exc:
-            trace.add_elapsed("analyze", time.perf_counter() - analyze_start)
-            error = _error_record(record, "analyze", exc)
-        else:
-            interaction_start = time.perf_counter()
-            try:
-                interactions_response = await interaction_checker.check([drug["name"] for drug in drugs])
-                trace.add_elapsed("interactions", time.perf_counter() - interaction_start)
-            except Exception as exc:
-                trace.add_elapsed("interactions", time.perf_counter() - interaction_start)
-                error = _error_record(record, "interactions", exc)
-        finally:
-            trace.add_elapsed("total", time.perf_counter() - total_start)
-            active_benchmark_trace.reset(token)
+            return await asyncio.wait_for(
+                _run_one(record),
+                timeout=record_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            return _timeout_prediction(record, record_timeout_seconds), _timeout_error_record(
+                record,
+                record_timeout_seconds,
+            )
 
-        return {
-            "record_id": str(record.get("id", "")),
-            "category": record.get("category"),
-            "ocr_noise_level": record.get("ocr_noise_level"),
-            "drugs": drugs,
-            "interactions": interactions_response,
-            "ner_entities": trace.ner_entities,
-            "link_attempts": trace.link_attempts,
-            "elapsed_ms": {key: trace.elapsed_ms.get(key, 0.0) for key in ELAPSED_KEYS},
-        }, error
+
+async def _run_one(record: dict) -> tuple[dict, dict | None]:
+    trace = BenchmarkTrace()
+    token = active_benchmark_trace.set(trace)
+    total_start = time.perf_counter()
+    drugs = []
+    interactions_response = None
+    error = None
+    try:
+        analyze_start = time.perf_counter()
+        drugs = await drug_analyzer.analyze(str(record["ocr_text"]))
+        trace.add_elapsed("analyze", time.perf_counter() - analyze_start)
+    except Exception as exc:
+        trace.add_elapsed("analyze", time.perf_counter() - analyze_start)
+        error = _error_record(record, "analyze", exc)
+    else:
+        interaction_start = time.perf_counter()
+        try:
+            interactions_response = await interaction_checker.check([drug["name"] for drug in drugs])
+            trace.add_elapsed("interactions", time.perf_counter() - interaction_start)
+        except Exception as exc:
+            trace.add_elapsed("interactions", time.perf_counter() - interaction_start)
+            error = _error_record(record, "interactions", exc)
+    finally:
+        trace.add_elapsed("total", time.perf_counter() - total_start)
+        active_benchmark_trace.reset(token)
+
+    return {
+        "record_id": str(record.get("id", "")),
+        "category": record.get("category"),
+        "ocr_noise_level": record.get("ocr_noise_level"),
+        "drugs": drugs,
+        "interactions": interactions_response,
+        "ner_entities": trace.ner_entities,
+        "link_attempts": trace.link_attempts,
+        "elapsed_ms": {key: trace.elapsed_ms.get(key, 0.0) for key in ELAPSED_KEYS},
+    }, error
 
 
 def _timeout_prediction(record: dict, timeout_seconds: float) -> dict:

@@ -14,6 +14,7 @@ def test_tier1_benchmark_workflow_contract():
     assert "concurrency:" in workflow
     assert "group: tier1-benchmark" in workflow
     assert "cancel-in-progress: false" in workflow
+    assert "dataset_revision must not contain commas" in workflow
     assert "BENCHMARK_JOB: pillchecker-benchmark-tier1" in workflow
     assert 'gcloud run jobs deploy "${{ env.BENCHMARK_JOB }}"' in workflow
     assert 'gcloud run jobs execute "${{ env.BENCHMARK_JOB }}"' in workflow
@@ -25,6 +26,8 @@ def test_tier1_benchmark_workflow_contract():
     assert "--record-timeout-seconds" in workflow
     assert "hf://buckets/SPerva/pillchecker-experiments" in workflow
     assert 'bucket = os.environ["BENCHMARK_BUCKET"]' in workflow
+    assert "0 < sample_size <= expected_limit" in workflow
+    assert "len(predictions) == sample_size" in workflow
 
     for artifact in ("manifest.json", "results.json", "predictions.jsonl", "errors.jsonl", "summary.md"):
         assert artifact in workflow

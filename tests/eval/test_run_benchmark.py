@@ -180,6 +180,47 @@ async def test_run_benchmark_records_timeout_error(monkeypatch):
     }]
 
 
+@pytest.mark.asyncio
+async def test_run_benchmark_timeout_excludes_semaphore_queue_time(monkeypatch):
+    async def fake_analyze(text):
+        if text == "slow":
+            await run_benchmark.asyncio.sleep(0.05)
+        return [{"name": text, "rxcui": None}]
+
+    async def fake_check(_names):
+        return {"interactions": []}
+
+    monkeypatch.setattr(run_benchmark.drug_analyzer, "analyze", fake_analyze)
+    monkeypatch.setattr(run_benchmark.interaction_checker, "check", fake_check)
+
+    output = await run_benchmark.run_benchmark(
+        [
+            {
+                "id": "case-slow",
+                "category": "single_ingredient",
+                "ocr_text": "slow",
+                "expected_names": ["slow"],
+                "source_composition": "Slow",
+            },
+            {
+                "id": "case-fast",
+                "category": "single_ingredient",
+                "ocr_text": "fast",
+                "expected_names": ["fast"],
+                "source_composition": "Fast",
+            },
+        ],
+        concurrency=1,
+        seed_cases=None,
+        record_timeout_seconds=0.01,
+    )
+
+    assert [error["record_id"] for error in output["errors"]] == ["case-slow"]
+    assert output["predictions"][0]["drugs"] == []
+    assert output["predictions"][1]["record_id"] == "case-fast"
+    assert output["predictions"][1]["drugs"] == [{"name": "fast", "rxcui": None}]
+
+
 def test_manifest_includes_ddinter_release_metadata():
     manifest = run_benchmark.build_manifest(
         run_id="tier1-test",
