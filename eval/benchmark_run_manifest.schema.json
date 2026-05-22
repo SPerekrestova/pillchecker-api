@@ -12,6 +12,9 @@
     "dataset_revision",
     "command",
     "model_ids",
+    "sample_size",
+    "concurrency",
+    "metric_schema_version",
     "metrics"
   ],
   "properties": {
@@ -62,6 +65,14 @@
     "sample_size": {
       "type": "integer",
       "minimum": 1
+    },
+    "concurrency": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "metric_schema_version": {
+      "type": "string",
+      "const": "benchmark-diagnostics-v1"
     },
     "random_seed": {
       "type": ["integer", "string", "null"]

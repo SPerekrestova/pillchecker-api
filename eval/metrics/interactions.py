@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any, Awaitable, Callable
 
 
@@ -140,6 +140,7 @@ def compute(
     uncertain = 0
     returned = 0
     records_with_any = 0
+    attempts = [attempt for prediction in predictions for attempt in prediction.get("interaction_attempts", [])]
 
     for prediction in predictions:
         interactions_response = prediction.get("interactions") or {}
@@ -159,6 +160,7 @@ def compute(
                 uncertain += 1
 
     total_pairs = sum(coverage.values())
+    attempt_diagnostics = _attempt_diagnostics(attempts)
     return {
         "descriptive": {
             "total_pairs_checked": total_pairs,
@@ -168,7 +170,40 @@ def compute(
             "severity_distribution": severity_distribution,
             "uncertain_rate": _rate(uncertain, returned),
             "records_with_any_interaction": records_with_any,
+            **attempt_diagnostics,
         },
         "accuracy": _accuracy(predictions, dataset),
         "seed_smoke": compute_seed_smoke(seed_cases, seed_results),
+    }
+
+
+def _status(attempt: dict, component: str) -> str:
+    block = attempt.get(component) or {}
+    return str(block.get("status") or "skipped")
+
+
+def _attempt_diagnostics(attempts: list[dict]) -> dict:
+    total = len(attempts)
+    source_counts = Counter(str(attempt.get("final_source") or "unknown") for attempt in attempts)
+    ddinter_rxcui_hits = sum(1 for attempt in attempts if _status(attempt, "ddinter_rxcui") == "hit")
+    ddinter_fts_hits = sum(1 for attempt in attempts if _status(attempt, "ddinter_fts") == "hit")
+    openfda_hits = sum(1 for attempt in attempts if _status(attempt, "openfda") == "hit")
+    unknown_pairs = Counter(
+        _pair_key(str(attempt.get("drug_a", "")), str(attempt.get("drug_b", "")))
+        for attempt in attempts
+        if attempt.get("final_source") == "unknown"
+    )
+    return {
+        "ddinter_rxcui_hit_rate": _rate(ddinter_rxcui_hits, total),
+        "ddinter_fts_rescue_rate": _rate(ddinter_fts_hits, total),
+        "openfda_rescue_rate": _rate(openfda_hits, total),
+        "source_counts": {
+            "ddinter": int(source_counts.get("ddinter", 0)),
+            "openfda": int(source_counts.get("openfda", 0)),
+            "unknown": int(source_counts.get("unknown", 0)),
+        },
+        "top_unknown_pairs": [
+            {"drug_a": drug_a, "drug_b": drug_b, "count": count}
+            for (drug_a, drug_b), count in unknown_pairs.most_common(10)
+        ],
     }

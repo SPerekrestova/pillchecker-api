@@ -22,6 +22,84 @@ def test_linking_nil_rate_from_explicit_attempts():
     assert result["n_link_attempts"] == 3
 
 
+def test_linking_reports_rxnorm_attempt_diagnostics():
+    predictions = [{
+        "record_id": "1",
+        "drugs": [
+            {"name": "Advil", "rxcui": "5640", "source": "rxnorm_fallback"},
+            {"name": "unknown", "rxcui": None, "source": "ner"},
+        ],
+        "rxnorm_attempts": [
+            {
+                "stage": "analyze",
+                "method": "get_rxcui",
+                "query": "unknown",
+                "rxcui": None,
+                "status": "miss",
+                "elapsed_ms": 1.0,
+            },
+            {
+                "stage": "analyze",
+                "method": "approximate_term",
+                "query": "Advil",
+                "rxcui": "5640",
+                "status": "hit",
+                "elapsed_ms": 2.0,
+            },
+            {
+                "stage": "interactions",
+                "method": "get_rxcui",
+                "query": "Ibuprofen",
+                "rxcui": "5640",
+                "status": "hit",
+                "elapsed_ms": 1.5,
+            },
+        ],
+    }]
+
+    result = linking.compute(predictions, [{"id": "1"}])
+
+    assert result["n_rxnorm_attempts"] == 3
+    assert result["rxnorm_by_method"]["get_rxcui"]["hit"] == 1
+    assert result["rxnorm_by_method"]["get_rxcui"]["miss"] == 1
+    assert result["rxnorm_by_method"]["approximate_term"]["hit"] == 1
+    assert result["unresolved_queries"] == [{"query": "unknown", "stage": "analyze", "method": "get_rxcui"}]
+    assert result["canonicalization_collisions"] == [{
+        "rxcui": "5640",
+        "queries": ["Advil", "Ibuprofen"],
+    }]
+
+
+def test_linking_ignores_get_drug_details_for_canonicalization_collisions():
+    predictions = [{
+        "record_id": "1",
+        "drugs": [{"name": "Advil", "rxcui": "5640", "source": "rxnorm_fallback"}],
+        "rxnorm_attempts": [
+            {
+                "stage": "analyze",
+                "method": "approximate_term",
+                "query": "Advil",
+                "rxcui": "5640",
+                "status": "hit",
+                "elapsed_ms": 2.0,
+            },
+            {
+                "stage": "analyze",
+                "method": "get_drug_details",
+                "query": "5640",
+                "input_rxcui": "5640",
+                "rxcui": "5640",
+                "status": "hit",
+                "elapsed_ms": 1.0,
+            },
+        ],
+    }]
+
+    result = linking.compute(predictions, [{"id": "1"}])
+
+    assert result["canonicalization_collisions"] == []
+
+
 def test_linking_nil_rate_none_without_attempts():
     result = linking.compute([{"record_id": "1", "drugs": [], "link_attempts": []}], [{"id": "1"}])
 

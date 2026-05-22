@@ -47,6 +47,23 @@ def test_interaction_label_candidates_schema_rejects_ground_truth_true():
 def test_benchmark_results_schema_contains_required_metric_blocks():
     schema = _load_schema("benchmark_results.schema.json")
     result = {
+        "overall": {
+            "records_total": 1,
+            "records_completed": 1,
+            "records_errored": 0,
+            "error_rate": 0.0,
+            "timeout_count": 0,
+            "concurrency": 1,
+            "wall_time_seconds": 0.1,
+            "records_per_second": 10.0,
+        },
+        "timing": {
+            "components": {
+                "total": {"p50_ms": 1.0, "p95_ms": 1.0, "p99_ms": 1.0, "max_ms": 1.0, "mean_ms": 1.0}
+            },
+            "slowest_component": "total",
+            "slowest_component_counts": {"total": 1},
+        },
         "ner": {
             "strict": {"precision": 1.0, "recall": 1.0, "f1": 1.0},
             "lenient": {"precision": 1.0, "recall": 1.0, "f1": 1.0},
@@ -65,6 +82,19 @@ def test_benchmark_results_schema_contains_required_metric_blocks():
             "acc_at_1": None,
             "incorrect_link_rate": None,
         },
+        "rxnorm": {
+            "coverage": 1.0,
+            "fallback_rate": 0.0,
+            "nil_rate": None,
+            "n_link_attempts": 0,
+            "n_drugs_total": 1,
+            "acc_at_1": None,
+            "incorrect_link_rate": None,
+            "n_rxnorm_attempts": 0,
+            "rxnorm_by_method": {},
+            "unresolved_queries": [],
+            "canonicalization_collisions": [],
+        },
         "interactions": {
             "descriptive": {
                 "total_pairs_checked": 0,
@@ -74,6 +104,11 @@ def test_benchmark_results_schema_contains_required_metric_blocks():
                 "severity_distribution": {"minor": 0, "moderate": 0, "major": 0, "unknown": 0},
                 "uncertain_rate": 0.0,
                 "records_with_any_interaction": 0,
+                "ddinter_rxcui_hit_rate": 0.0,
+                "ddinter_fts_rescue_rate": 0.0,
+                "openfda_rescue_rate": 0.0,
+                "source_counts": {"ddinter": 0, "openfda": 0, "unknown": 0},
+                "top_unknown_pairs": [],
             },
             "accuracy": None,
             "seed_smoke": {
@@ -82,6 +117,12 @@ def test_benchmark_results_schema_contains_required_metric_blocks():
                 "severity_accuracy": 0.0,
                 "missed_pairs": [],
             },
+        },
+        "errors": {
+            "total": 0,
+            "by_stage": {},
+            "by_class": {},
+            "records": [],
         },
         "fp_taxonomy": {
             "brand": {"count": 0, "examples": []},

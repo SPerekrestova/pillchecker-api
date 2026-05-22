@@ -4,8 +4,42 @@
   "title": "PillChecker benchmark results",
   "type": "object",
   "additionalProperties": true,
-  "required": ["ner", "linking", "interactions", "fp_taxonomy"],
+  "required": ["overall", "timing", "ner", "linking", "rxnorm", "interactions", "errors", "fp_taxonomy"],
   "properties": {
+    "overall": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "records_total",
+        "records_completed",
+        "records_errored",
+        "error_rate",
+        "timeout_count",
+        "concurrency",
+        "wall_time_seconds",
+        "records_per_second"
+      ],
+      "properties": {
+        "records_total": {"type": "integer", "minimum": 0},
+        "records_completed": {"type": "integer", "minimum": 0},
+        "records_errored": {"type": "integer", "minimum": 0},
+        "error_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "timeout_count": {"type": "integer", "minimum": 0},
+        "concurrency": {"type": "integer", "minimum": 1},
+        "wall_time_seconds": {"type": "number", "minimum": 0},
+        "records_per_second": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["components", "slowest_component", "slowest_component_counts"],
+      "properties": {
+        "components": {"type": "object"},
+        "slowest_component": {"type": ["string", "null"]},
+        "slowest_component_counts": {"type": "object"}
+      }
+    },
     "ner": {
       "type": "object",
       "additionalProperties": true,
@@ -50,6 +84,23 @@
         "incorrect_link_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
       }
     },
+    "rxnorm": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "coverage",
+        "fallback_rate",
+        "nil_rate",
+        "n_link_attempts",
+        "n_drugs_total",
+        "acc_at_1",
+        "incorrect_link_rate",
+        "n_rxnorm_attempts",
+        "rxnorm_by_method",
+        "unresolved_queries",
+        "canonicalization_collisions"
+      ]
+    },
     "interactions": {
       "type": "object",
       "additionalProperties": true,
@@ -65,7 +116,12 @@
             "unknown_rate",
             "severity_distribution",
             "uncertain_rate",
-            "records_with_any_interaction"
+            "records_with_any_interaction",
+            "ddinter_rxcui_hit_rate",
+            "ddinter_fts_rescue_rate",
+            "openfda_rescue_rate",
+            "source_counts",
+            "top_unknown_pairs"
           ],
           "properties": {
             "total_pairs_checked": {"type": "integer", "minimum": 0},
@@ -74,7 +130,12 @@
             "unknown_rate": {"type": "number", "minimum": 0, "maximum": 1},
             "severity_distribution": {"$ref": "#/$defs/severity_counts"},
             "uncertain_rate": {"type": "number", "minimum": 0, "maximum": 1},
-            "records_with_any_interaction": {"type": "integer", "minimum": 0}
+            "records_with_any_interaction": {"type": "integer", "minimum": 0},
+            "ddinter_rxcui_hit_rate": {"type": "number", "minimum": 0, "maximum": 1},
+            "ddinter_fts_rescue_rate": {"type": "number", "minimum": 0, "maximum": 1},
+            "openfda_rescue_rate": {"type": "number", "minimum": 0, "maximum": 1},
+            "source_counts": {"type": "object"},
+            "top_unknown_pairs": {"type": "array"}
           }
         },
         "accuracy": {"type": ["object", "null"]},
@@ -89,6 +150,17 @@
             "missed_pairs": {"type": "array"}
           }
         }
+      }
+    },
+    "errors": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["total", "by_stage", "by_class", "records"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "by_stage": {"type": "object"},
+        "by_class": {"type": "object"},
+        "records": {"type": "array"}
       }
     },
     "fp_taxonomy": {

@@ -79,7 +79,20 @@ Tier 1 benchmark entrypoints:
 
 The runner loads benchmark inputs from the HF dataset and writes benchmark outputs to the HF experiments bucket when `--local-only` is not set. DDInter data is not stored in HF: if the local SQLite file is absent, configure `INTERACTION_DB_REPO`, `INTERACTION_DB_TAG`, and optionally `INTERACTION_DB_SHA256` so the runner can fetch `ddinter.db` from the pinned GitHub release source.
 
-`predictions.jsonl` includes `elapsed_ms` keys for `ocr_clean`, `ner`, `rxnorm`, `ddinter_rxcui`, `ddinter_fts`, `openfda`, `severity`, `analyze`, `interactions`, and `total`. These measurements intentionally overlap: `analyze` includes OCR, NER, and RxNorm work; `interactions` includes DDInter, OpenFDA, and severity work; `total` includes the top-level phases plus benchmark overhead. Do not sum the keys as a disjoint latency partition.
+`predictions.jsonl` includes benchmark-only diagnostics for each record:
+
+1. `elapsed_ms` preserves the original 10 timing keys: `ocr_clean`, `ner`, `rxnorm`, `ddinter_rxcui`, `ddinter_fts`, `openfda`, `severity`, `analyze`, `interactions`, and `total`.
+2. `component_timings_ms` repeats those keys and adds `critical_path` plus `slowest_component_ms`; `critical_path` is the sum of the non-aggregate component buckets, and `slowest_component` names the largest non-aggregate component bucket for that record.
+3. `ner_diagnostics` includes predicted entities plus per-record strict and lenient TP/FP/FN counts when `expected_names` is present.
+4. `rxnorm_attempts` records benchmark-stage, method, query, returned RxCUI, status, elapsed time, output summary, and error metadata for RxNorm calls.
+5. `interaction_attempts` records one row per checked pair, including pair names, RxCUIs, DDInter RxCUI lookup, DDInter FTS lookup, OpenFDA fallback, final source, final severity, and miss reason.
+6. `pipeline_errors` records timeout or component errors tied to the record without requiring the whole benchmark to fail.
+
+Timing measurements intentionally overlap: `analyze` includes OCR, NER, and RxNorm work; `interactions` includes DDInter, OpenFDA, and severity work; `total` includes the top-level phases plus benchmark overhead. Do not sum all timing keys as a disjoint latency partition. Starting with `metric_schema_version: "benchmark-diagnostics-v1"`, the `rxnorm` timing bucket covers all benchmark-wrapped RxNorm calls (`get_rxcui`, `approximate_term`, `search_by_name`, and `get_drug_details`), so compare it with earlier runs only as a changed-instrumentation metric.
+
+`results.json` groups rollups by `overall`, `timing`, `ner`, `linking`, `rxnorm`, `interactions`, `errors`, and `fp_taxonomy`. `linking` is kept for backward compatibility with the original link-coverage fields; `rxnorm` carries those core fields plus RxNorm attempt diagnostics such as method hit/miss/error counts, unresolved queries, and canonicalization collisions. Interaction diagnostics report DDInter RxCUI hit rate, DDInter FTS rescue rate, OpenFDA rescue rate, source counts, and common unknown pairs. These are routing/source-coverage diagnostics unless reviewed `expected_interactions` and `known_safe_pairs` are present.
+
+`manifest.json` includes `metric_schema_version`, dataset revision, run id, sample size, model IDs, concurrency, and DDInter release metadata. `summary.md` highlights top-line metrics, timing bottlenecks, unresolved RxNorm queries, unknown interaction pairs, and an explicit warning when outputs are not accuracy-certified.
 
 Use `--record-timeout-seconds` to bound each input record so a stuck RxNorm, OpenFDA, or model path records a `record_timeout` error instead of hanging the whole run. Use `--local-only` for development and smoke runs. Without `--local-only`, result artifacts upload to the experiments bucket under an immutable `benchmark-results/<YYYY-MM-DD>/<run-id>/` prefix; do not commit generated candidate JSON or benchmark result directories to GitHub.
 
