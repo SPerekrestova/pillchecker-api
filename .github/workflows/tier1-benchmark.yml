@@ -111,6 +111,9 @@ jobs:
           INTERACTION_DB_TAG: ${{ secrets.INTERACTION_DB_TAG }}
           INTERACTION_DB_SHA256: ${{ secrets.INTERACTION_DB_SHA256 }}
         run: |
+          INTERACTION_DB_REPO="$(printf '%s' "$INTERACTION_DB_REPO" | tr -d "\r\n")"
+          INTERACTION_DB_TAG="$(printf '%s' "$INTERACTION_DB_TAG" | tr -d "\r\n")"
+          INTERACTION_DB_SHA256="$(printf '%s' "$INTERACTION_DB_SHA256" | tr -d "\r\n")"
           mkdir -p /tmp/ddinter-preflight
           gh release download "$INTERACTION_DB_TAG" \
             --repo "$INTERACTION_DB_REPO" \
@@ -198,6 +201,9 @@ jobs:
           OUTPUT_PREFIX: ${{ needs.preflight.outputs.output_prefix }}
           IMAGE_TAG: ${{ needs.preflight.outputs.image_tag }}
         run: |
+          INTERACTION_DB_REPO="$(printf '%s' "$INTERACTION_DB_REPO" | tr -d "\r\n")"
+          INTERACTION_DB_TAG="$(printf '%s' "$INTERACTION_DB_TAG" | tr -d "\r\n")"
+          INTERACTION_DB_SHA256="$(printf '%s' "$INTERACTION_DB_SHA256" | tr -d "\r\n")"
           SERVICE_ACCOUNT="${CLOUD_RUN_SERVICE_ACCOUNT:-deploy-sa@${GCP_PROJECT_ID}.iam.gserviceaccount.com}"
           ARGS="--revision=${DATASET_REVISION},--limit=${LIMIT},--concurrency=${CONCURRENCY},--run-id=${RUN_ID},--output-prefix=${OUTPUT_PREFIX},--record-timeout-seconds=${RECORD_TIMEOUT_SECONDS}"
           if [ "$UPLOAD" != "true" ]; then
@@ -277,8 +283,8 @@ jobs:
               "sample_size": 0 < sample_size <= expected_limit,
               "git_commit": bool(manifest.get("git_commit")),
               "model_ids": bool(manifest.get("model_ids", {}).get("ner")),
-              "ddinter_repo": manifest.get("ddinter_db", {}).get("repo") == os.environ["INTERACTION_DB_REPO"],
-              "ddinter_tag": manifest.get("ddinter_db", {}).get("tag") == os.environ["INTERACTION_DB_TAG"],
+              "ddinter_repo": manifest.get("ddinter_db", {}).get("repo") == os.environ["INTERACTION_DB_REPO"].strip("\r\n"),
+              "ddinter_tag": manifest.get("ddinter_db", {}).get("tag") == os.environ["INTERACTION_DB_TAG"].strip("\r\n"),
               "output_prefix": manifest.get("bucket_output_prefix") == prefix,
               "prediction_count": len(predictions) == sample_size,
           }

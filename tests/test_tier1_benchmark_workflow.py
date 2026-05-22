@@ -23,6 +23,9 @@ def test_tier1_benchmark_workflow_contract():
     assert "INTERACTION_DB_REPO" in workflow
     assert "INTERACTION_DB_TAG" in workflow
     assert "INTERACTION_DB_SHA256" in workflow
+    assert 'tr -d "\\r\\n"' in workflow
+    assert 'INTERACTION_DB_REPO="$(printf' in workflow
+    assert 'INTERACTION_DB_TAG="$(printf' in workflow
     assert "--record-timeout-seconds" in workflow
     assert "hf://buckets/SPerva/pillchecker-experiments" in workflow
     assert 'bucket = os.environ["BENCHMARK_BUCKET"]' in workflow
@@ -42,6 +45,9 @@ def test_dockerfile_has_separate_runtime_and_benchmark_targets():
     assert "FROM app-base AS runtime" in dockerfile
     assert "COPY eval/ /app/eval/" in dockerfile
     assert 'ENTRYPOINT ["python", "-m", "eval.run_benchmark"]' in dockerfile
+    assert 'INTERACTION_DB_REPO="$(printf' in dockerfile
+    assert 'INTERACTION_DB_TAG="$(printf' in dockerfile
+    assert 'tr -d "\\r\\n"' in dockerfile
 
     assert "target: runtime" in ci_workflow
     assert "--target runtime" in ci_workflow
