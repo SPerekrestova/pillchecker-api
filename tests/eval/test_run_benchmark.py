@@ -366,6 +366,13 @@ def test_manifest_includes_ddinter_release_metadata():
     assert manifest["concurrency"] == 8
 
 
+def test_git_commit_uses_benchmark_env_when_git_metadata_missing(monkeypatch):
+    monkeypatch.setenv("BENCHMARK_GIT_COMMIT", "e9f24645baf2d64a0504ee5b03c7af9f767b74cb")
+    monkeypatch.setattr(run_benchmark.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError))
+
+    assert run_benchmark._git_commit() == "e9f24645baf2d64a0504ee5b03c7af9f767b74cb"
+
+
 @pytest.mark.asyncio
 async def test_ensure_ddinter_db_downloads_from_github_release(monkeypatch, tmp_path: Path):
     checks = iter([False, True])

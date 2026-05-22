@@ -787,6 +787,9 @@ def ddinter_metadata_from_args(args: argparse.Namespace) -> dict:
 
 
 def _git_commit() -> str:
+    env_commit = os.environ.get("BENCHMARK_GIT_COMMIT") or os.environ.get("GITHUB_SHA")
+    if env_commit:
+        return env_commit
     try:
         completed = subprocess.run(
             ["git", "rev-parse", "HEAD"],
