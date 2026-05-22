@@ -47,6 +47,15 @@ ELAPSED_KEYS = (
     "interactions",
     "total",
 )
+LEAF_ELAPSED_KEYS = (
+    "ocr_clean",
+    "ner",
+    "rxnorm",
+    "ddinter_rxcui",
+    "ddinter_fts",
+    "openfda",
+    "severity",
+)
 DEFAULT_SEED_CASES = Path(__file__).with_name("interaction_seed_cases.json")
 
 active_benchmark_trace: ContextVar["BenchmarkTrace | None"] = ContextVar(
@@ -63,6 +72,7 @@ class BenchmarkTrace:
     interaction_attempts: list[dict] = field(default_factory=list)
     ner_entities: list[dict] = field(default_factory=list)
     pipeline_errors: list[dict] = field(default_factory=list)
+    error_signatures: set[tuple[str, str]] = field(default_factory=set)
     phase: str | None = None
     active_interaction_attempt: dict | None = None
 
@@ -70,6 +80,10 @@ class BenchmarkTrace:
         self.elapsed_ms[key] = round(self.elapsed_ms.get(key, 0.0) + seconds * 1000, 3)
 
     def record_error(self, stage: str, exc: Exception) -> None:
+        signature = (exc.__class__.__name__, str(exc))
+        if signature in self.error_signatures:
+            return
+        self.error_signatures.add(signature)
         self.pipeline_errors.append({
             "stage": stage,
             "error_class": exc.__class__.__name__,
@@ -78,21 +92,12 @@ class BenchmarkTrace:
 
     def component_timings(self) -> dict[str, float]:
         timings = {key: self.elapsed_ms.get(key, 0.0) for key in ELAPSED_KEYS}
-        critical_keys = (
-            "ocr_clean",
-            "ner",
-            "rxnorm",
-            "ddinter_rxcui",
-            "ddinter_fts",
-            "openfda",
-            "severity",
-        )
-        timings["critical_path"] = round(max((timings.get(key, 0.0) for key in critical_keys), default=0.0), 3)
-        timings["slowest_component_ms"] = round(max(timings.get(key, 0.0) for key in ELAPSED_KEYS), 3)
+        timings["critical_path"] = round(sum(timings.get(key, 0.0) for key in LEAF_ELAPSED_KEYS), 3)
+        timings["slowest_component_ms"] = round(max(timings.get(key, 0.0) for key in LEAF_ELAPSED_KEYS), 3)
         return timings
 
     def slowest_component(self) -> str:
-        return max(ELAPSED_KEYS, key=lambda key: self.elapsed_ms.get(key, 0.0))
+        return max(LEAF_ELAPSED_KEYS, key=lambda key: self.elapsed_ms.get(key, 0.0))
 
 
 @contextlib.contextmanager
@@ -329,7 +334,6 @@ def _resolve_pair_wrapper(original):
             if trace is not None and attempt is not None:
                 attempt["final_source"] = "error"
                 attempt["miss_reason"] = "exception"
-                trace.record_error("interactions", exc)
                 _finalize_interaction_attempt(attempt)
             raise
         finally:
@@ -468,7 +472,19 @@ async def run_benchmark(
             seed_results = await interaction_metrics.run_seed_smoke(seed_cases, interaction_checker.check)
     wall_time_seconds = time.perf_counter() - wall_start
 
-    linking_results = linking_metrics.compute(predictions, records)
+    rxnorm_results = linking_metrics.compute(predictions, records)
+    linking_results = {
+        key: rxnorm_results.get(key)
+        for key in (
+            "coverage",
+            "fallback_rate",
+            "nil_rate",
+            "n_link_attempts",
+            "n_drugs_total",
+            "acc_at_1",
+            "incorrect_link_rate",
+        )
+    }
     results = {
         "overall": pipeline_metrics.overall(
             predictions,
@@ -479,7 +495,7 @@ async def run_benchmark(
         "timing": pipeline_metrics.timing(predictions),
         "ner": ner_metrics.compute(predictions, records),
         "linking": linking_results,
-        "rxnorm": linking_results,
+        "rxnorm": rxnorm_results,
         "interactions": interaction_metrics.compute(
             predictions,
             records,
@@ -716,8 +732,8 @@ def build_manifest(
     command: str,
     sample_size: int,
     output_prefix: str,
-    concurrency: int | None = None,
     results: dict,
+    concurrency: int | None = None,
     random_seed: int | str | None = None,
     ddinter_db: dict | None = None,
 ) -> dict:

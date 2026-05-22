@@ -189,7 +189,7 @@ def _attempt_diagnostics(attempts: list[dict]) -> dict:
     ddinter_fts_hits = sum(1 for attempt in attempts if _status(attempt, "ddinter_fts") == "hit")
     openfda_hits = sum(1 for attempt in attempts if _status(attempt, "openfda") == "hit")
     unknown_pairs = Counter(
-        (str(attempt.get("drug_a", "")), str(attempt.get("drug_b", "")))
+        _pair_key(str(attempt.get("drug_a", "")), str(attempt.get("drug_b", "")))
         for attempt in attempts
         if attempt.get("final_source") == "unknown"
     )

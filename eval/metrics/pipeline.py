@@ -18,8 +18,6 @@ TIMING_COMPONENTS = (
     "interactions",
     "total",
 )
-
-
 def _rate(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator else 0.0
 
@@ -36,7 +34,7 @@ def timing(predictions: list[dict]) -> dict:
     components: dict[str, dict] = {}
     for component in TIMING_COMPONENTS:
         values = [
-            float(prediction.get("component_timings_ms", prediction.get("elapsed_ms", {})).get(component, 0.0))
+            float(_timing_source(prediction).get(component, 0.0))
             for prediction in predictions
         ]
         components[component] = {
@@ -57,6 +55,13 @@ def timing(predictions: list[dict]) -> dict:
         "slowest_component": slowest_counts.most_common(1)[0][0] if slowest_counts else None,
         "slowest_component_counts": dict(sorted(slowest_counts.items())),
     }
+
+
+def _timing_source(prediction: dict) -> dict:
+    timings = prediction.get("component_timings_ms")
+    if timings is None:
+        timings = prediction.get("elapsed_ms", {})
+    return timings
 
 
 def overall(

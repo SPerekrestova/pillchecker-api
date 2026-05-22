@@ -91,7 +91,7 @@ async def test_run_benchmark_captures_trace_metrics_and_artifacts(monkeypatch, t
     assert prediction["ner_entities"][0]["text"] == "warfarin"
     assert len(prediction["link_attempts"]) >= 2
     assert prediction["component_timings_ms"]["total"] >= 0.0
-    assert prediction["component_timings_ms"]["critical_path"] >= 0.0
+    assert prediction["component_timings_ms"]["critical_path"] >= prediction["component_timings_ms"]["slowest_component_ms"]
     assert prediction["slowest_component"] in {
         "ocr_clean",
         "ner",
@@ -100,9 +100,6 @@ async def test_run_benchmark_captures_trace_metrics_and_artifacts(monkeypatch, t
         "ddinter_fts",
         "openfda",
         "severity",
-        "analyze",
-        "interactions",
-        "total",
     }
     assert prediction["ner_diagnostics"]["strict"]["tp"] == 2
     assert prediction["ner_diagnostics"]["strict"]["fp"] == 0
@@ -139,6 +136,7 @@ async def test_run_benchmark_captures_trace_metrics_and_artifacts(monkeypatch, t
     assert output["results"]["overall"]["records_completed"] == 1
     assert output["results"]["timing"]["components"]["total"]["p50_ms"] >= 0.0
     assert output["results"]["rxnorm"]["n_rxnorm_attempts"] >= 2
+    assert "n_rxnorm_attempts" not in output["results"]["linking"]
     assert output["results"]["interactions"]["descriptive"]["ddinter_rxcui_hit_rate"] == 1.0
     assert output["results"]["interactions"]["accuracy"] is None
 
@@ -197,6 +195,42 @@ def test_manifest_summary_contains_top_line_metric_scalars():
         "seed_smoke_false_alarm_rate": 0.0,
         "fp_total": 3,
     }
+
+
+def test_trace_component_timings_use_leaf_components_for_bottlenecks():
+    trace = run_benchmark.BenchmarkTrace()
+    trace.elapsed_ms.update({
+        "ocr_clean": 2.0,
+        "ner": 3.0,
+        "rxnorm": 10.0,
+        "ddinter_rxcui": 4.0,
+        "ddinter_fts": 5.0,
+        "openfda": 6.0,
+        "severity": 7.0,
+        "analyze": 100.0,
+        "interactions": 200.0,
+        "total": 300.0,
+    })
+
+    timings = trace.component_timings()
+
+    assert trace.slowest_component() == "rxnorm"
+    assert timings["slowest_component_ms"] == 10.0
+    assert timings["critical_path"] == 37.0
+
+
+def test_trace_pipeline_errors_dedupe_same_exception():
+    trace = run_benchmark.BenchmarkTrace()
+    exc = RuntimeError("same failure")
+
+    trace.record_error("openfda", exc)
+    trace.record_error("interactions", exc)
+
+    assert trace.pipeline_errors == [{
+        "stage": "openfda",
+        "error_class": "RuntimeError",
+        "message": "same failure",
+    }]
 
 
 @pytest.mark.asyncio
