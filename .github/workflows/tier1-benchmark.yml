@@ -33,6 +33,10 @@ on:
         default: "120"
         type: string
 
+concurrency:
+  group: tier1-benchmark
+  cancel-in-progress: false
+
 env:
   REGION: europe-west1
   BENCHMARK_JOB: pillchecker-benchmark-tier1
@@ -192,7 +196,7 @@ jobs:
           if [ "$UPLOAD" != "true" ]; then
             ARGS="${ARGS},--local-only"
           fi
-          gcloud run jobs deploy pillchecker-benchmark-tier1 \
+          gcloud run jobs deploy "${{ env.BENCHMARK_JOB }}" \
             --image="$IMAGE_TAG" \
             --region="$REGION" \
             --tasks=1 \
@@ -209,7 +213,7 @@ jobs:
       - name: Execute benchmark Cloud Run Job
         id: execute
         run: |
-          execution="$(gcloud run jobs execute pillchecker-benchmark-tier1 --region="$REGION" --wait --format='value(metadata.name)')"
+          execution="$(gcloud run jobs execute "${{ env.BENCHMARK_JOB }}" --region="$REGION" --wait --format='value(metadata.name)')"
           echo "execution_name=$execution" >> "$GITHUB_OUTPUT"
           echo "Cloud Run Job execution: $execution"
 
@@ -237,7 +241,7 @@ jobs:
           import sys
           from huggingface_hub import HfFileSystem
 
-          bucket = "hf://buckets/SPerva/pillchecker-experiments"
+          bucket = os.environ["BENCHMARK_BUCKET"]
           prefix = os.environ["OUTPUT_PREFIX"]
           base = f"{bucket.rstrip('/')}/{prefix}"
           required = ["manifest.json", "results.json", "predictions.jsonl", "errors.jsonl", "summary.md"]

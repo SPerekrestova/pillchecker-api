@@ -11,8 +11,12 @@ def test_tier1_benchmark_workflow_contract():
     for input_name in ("dataset_revision", "limit", "run_id", "concurrency", "upload"):
         assert f"{input_name}:" in workflow
 
-    assert "gcloud run jobs deploy pillchecker-benchmark-tier1" in workflow
-    assert "gcloud run jobs execute pillchecker-benchmark-tier1" in workflow
+    assert "concurrency:" in workflow
+    assert "group: tier1-benchmark" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert "BENCHMARK_JOB: pillchecker-benchmark-tier1" in workflow
+    assert 'gcloud run jobs deploy "${{ env.BENCHMARK_JOB }}"' in workflow
+    assert 'gcloud run jobs execute "${{ env.BENCHMARK_JOB }}"' in workflow
     assert "--task-timeout=60m" in workflow
     assert "HF_TOKEN=HF_TOKEN:latest" in workflow
     assert "INTERACTION_DB_REPO" in workflow
@@ -20,6 +24,7 @@ def test_tier1_benchmark_workflow_contract():
     assert "INTERACTION_DB_SHA256" in workflow
     assert "--record-timeout-seconds" in workflow
     assert "hf://buckets/SPerva/pillchecker-experiments" in workflow
+    assert 'bucket = os.environ["BENCHMARK_BUCKET"]' in workflow
 
     for artifact in ("manifest.json", "results.json", "predictions.jsonl", "errors.jsonl", "summary.md"):
         assert artifact in workflow
