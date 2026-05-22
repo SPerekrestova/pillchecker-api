@@ -223,7 +223,7 @@ jobs:
             --memory=4Gi \
             --cpu=2 \
             --service-account="$SERVICE_ACCOUNT" \
-            --set-env-vars="INTERACTION_DB_REPO=${INTERACTION_DB_REPO},INTERACTION_DB_TAG=${INTERACTION_DB_TAG},INTERACTION_DB_SHA256=${INTERACTION_DB_SHA256}" \
+            --set-env-vars="INTERACTION_DB_REPO=${INTERACTION_DB_REPO},INTERACTION_DB_TAG=${INTERACTION_DB_TAG},INTERACTION_DB_SHA256=${INTERACTION_DB_SHA256},BENCHMARK_FORCE_OS_EXIT=1" \
             --set-secrets="HF_TOKEN=HF_TOKEN:latest" \
             --args="$ARGS"
 

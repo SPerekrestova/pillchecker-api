@@ -580,5 +580,14 @@ def main() -> int:
     return asyncio.run(_main_async(args))
 
 
+def exit_process(exit_code: int) -> None:
+    """Exit normally, or force-exit in Cloud Run if upload libraries keep threads alive."""
+    if os.environ.get("BENCHMARK_FORCE_OS_EXIT") == "1":
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(exit_code)
+    raise SystemExit(exit_code)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    exit_process(main())
