@@ -35,8 +35,8 @@ RUN --mount=type=secret,id=github_token,required=false \
       --asset ddinter.db \
       --output ddinter.db
 
-# --- Runtime stage ---
-FROM python:3.12-slim
+# --- Application base stage ---
+FROM python:3.12-slim AS app-base
 
 WORKDIR /app
 
@@ -69,6 +69,23 @@ RUN groupadd -r pillchecker && useradd -r -g pillchecker pillchecker && \
     chown -R pillchecker:pillchecker /app
 
 USER pillchecker
+
+# --- Benchmark runner stage ---
+FROM app-base AS benchmark-runner
+
+USER root
+
+COPY eval/ /app/eval/
+
+RUN chown -R pillchecker:pillchecker /app/eval
+
+USER pillchecker
+
+ENTRYPOINT ["python", "-m", "eval.run_benchmark"]
+CMD []
+
+# --- Runtime stage ---
+FROM app-base AS runtime
 
 EXPOSE 8000
 

@@ -66,6 +66,25 @@
     "random_seed": {
       "type": ["integer", "string", "null"]
     },
+    "ddinter_db": {
+      "type": "object",
+      "required": ["repo", "tag", "asset"],
+      "properties": {
+        "repo": {
+          "type": ["string", "null"]
+        },
+        "tag": {
+          "type": ["string", "null"]
+        },
+        "asset": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
     "metrics": {
       "type": "object",
       "minProperties": 1,

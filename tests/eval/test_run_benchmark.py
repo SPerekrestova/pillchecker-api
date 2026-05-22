@@ -150,6 +150,104 @@ async def test_run_benchmark_records_per_record_errors(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_benchmark_records_timeout_error(monkeypatch):
+    async def hanging_analyze(_text):
+        await run_benchmark.asyncio.sleep(0.05)
+        return [{"name": "ibuprofen", "rxcui": "5640"}]
+
+    monkeypatch.setattr(run_benchmark.drug_analyzer, "analyze", hanging_analyze)
+
+    output = await run_benchmark.run_benchmark(
+        [{
+            "id": "case-timeout",
+            "category": "single_ingredient",
+            "ocr_text": "ibuprofen",
+            "expected_names": ["ibuprofen"],
+            "source_composition": "Ibuprofen",
+        }],
+        concurrency=1,
+        seed_cases=None,
+        record_timeout_seconds=0.01,
+    )
+
+    assert output["predictions"][0]["record_id"] == "case-timeout"
+    assert output["predictions"][0]["drugs"] == []
+    assert output["errors"] == [{
+        "record_id": "case-timeout",
+        "stage": "record_timeout",
+        "error_class": "TimeoutError",
+        "message": "record exceeded 0.01s timeout",
+    }]
+
+
+@pytest.mark.asyncio
+async def test_run_benchmark_timeout_excludes_semaphore_queue_time(monkeypatch):
+    async def fake_analyze(text):
+        if text == "slow":
+            await run_benchmark.asyncio.sleep(0.05)
+        return [{"name": text, "rxcui": None}]
+
+    async def fake_check(_names):
+        return {"interactions": []}
+
+    monkeypatch.setattr(run_benchmark.drug_analyzer, "analyze", fake_analyze)
+    monkeypatch.setattr(run_benchmark.interaction_checker, "check", fake_check)
+
+    output = await run_benchmark.run_benchmark(
+        [
+            {
+                "id": "case-slow",
+                "category": "single_ingredient",
+                "ocr_text": "slow",
+                "expected_names": ["slow"],
+                "source_composition": "Slow",
+            },
+            {
+                "id": "case-fast",
+                "category": "single_ingredient",
+                "ocr_text": "fast",
+                "expected_names": ["fast"],
+                "source_composition": "Fast",
+            },
+        ],
+        concurrency=1,
+        seed_cases=None,
+        record_timeout_seconds=0.01,
+    )
+
+    assert [error["record_id"] for error in output["errors"]] == ["case-slow"]
+    assert output["predictions"][0]["drugs"] == []
+    assert output["predictions"][1]["record_id"] == "case-fast"
+    assert output["predictions"][1]["drugs"] == [{"name": "fast", "rxcui": None}]
+
+
+def test_manifest_includes_ddinter_release_metadata():
+    manifest = run_benchmark.build_manifest(
+        run_id="tier1-test",
+        dataset_revision="abc123",
+        dataset_path="data/benchmark.json",
+        command="python -m eval.run_benchmark",
+        sample_size=1,
+        output_prefix="benchmark-results/2026-05-21/tier1-test/",
+        results={"ner": {}, "linking": {}, "interactions": {}, "fp_taxonomy": {}},
+        random_seed=None,
+        ddinter_db={
+            "repo": "SPerekrestova/pillchecker-api",
+            "tag": "ddinter-2026-05-16",
+            "asset": "ddinter.db",
+            "sha256": "abc123",
+        },
+    )
+
+    assert manifest["ddinter_db"] == {
+        "repo": "SPerekrestova/pillchecker-api",
+        "tag": "ddinter-2026-05-16",
+        "asset": "ddinter.db",
+        "sha256": "abc123",
+    }
+
+
+@pytest.mark.asyncio
 async def test_ensure_ddinter_db_downloads_from_github_release(monkeypatch, tmp_path: Path):
     checks = iter([False, True])
     downloads = []

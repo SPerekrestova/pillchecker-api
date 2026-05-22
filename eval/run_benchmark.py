@@ -165,14 +165,21 @@ async def run_benchmark(
     *,
     concurrency: int,
     seed_cases: dict | None,
+    record_timeout_seconds: float | None = None,
 ) -> dict:
     """Run the benchmark over already-loaded records."""
     if concurrency < 1:
         raise ValueError("concurrency must be at least 1")
+    if record_timeout_seconds is not None and record_timeout_seconds <= 0:
+        raise ValueError("record_timeout_seconds must be positive")
     semaphore = asyncio.Semaphore(concurrency)
     with install_benchmark_instrumentation():
         record_results = await asyncio.gather(*[
-            _run_one(record, semaphore)
+            _run_one_with_timeout(
+                record,
+                semaphore,
+                record_timeout_seconds=record_timeout_seconds,
+            )
             for record in records
         ])
         predictions = [item[0] for item in record_results]
@@ -200,43 +207,78 @@ async def run_benchmark(
     }
 
 
-async def _run_one(record: dict, semaphore: asyncio.Semaphore) -> tuple[dict, dict | None]:
+async def _run_one_with_timeout(
+    record: dict,
+    semaphore: asyncio.Semaphore,
+    *,
+    record_timeout_seconds: float | None,
+) -> tuple[dict, dict | None]:
     async with semaphore:
-        trace = BenchmarkTrace()
-        token = active_benchmark_trace.set(trace)
-        total_start = time.perf_counter()
-        drugs = []
-        interactions_response = None
-        error = None
+        if record_timeout_seconds is None:
+            return await _run_one(record)
         try:
-            analyze_start = time.perf_counter()
-            drugs = await drug_analyzer.analyze(str(record["ocr_text"]))
-            trace.add_elapsed("analyze", time.perf_counter() - analyze_start)
-        except Exception as exc:
-            trace.add_elapsed("analyze", time.perf_counter() - analyze_start)
-            error = _error_record(record, "analyze", exc)
-        else:
-            interaction_start = time.perf_counter()
-            try:
-                interactions_response = await interaction_checker.check([drug["name"] for drug in drugs])
-                trace.add_elapsed("interactions", time.perf_counter() - interaction_start)
-            except Exception as exc:
-                trace.add_elapsed("interactions", time.perf_counter() - interaction_start)
-                error = _error_record(record, "interactions", exc)
-        finally:
-            trace.add_elapsed("total", time.perf_counter() - total_start)
-            active_benchmark_trace.reset(token)
+            return await asyncio.wait_for(
+                _run_one(record),
+                timeout=record_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            return _timeout_prediction(record, record_timeout_seconds), _timeout_error_record(
+                record,
+                record_timeout_seconds,
+            )
 
-        return {
-            "record_id": str(record.get("id", "")),
-            "category": record.get("category"),
-            "ocr_noise_level": record.get("ocr_noise_level"),
-            "drugs": drugs,
-            "interactions": interactions_response,
-            "ner_entities": trace.ner_entities,
-            "link_attempts": trace.link_attempts,
-            "elapsed_ms": {key: trace.elapsed_ms.get(key, 0.0) for key in ELAPSED_KEYS},
-        }, error
+
+async def _run_one(record: dict) -> tuple[dict, dict | None]:
+    trace = BenchmarkTrace()
+    token = active_benchmark_trace.set(trace)
+    total_start = time.perf_counter()
+    drugs = []
+    interactions_response = None
+    error = None
+    try:
+        analyze_start = time.perf_counter()
+        drugs = await drug_analyzer.analyze(str(record["ocr_text"]))
+        trace.add_elapsed("analyze", time.perf_counter() - analyze_start)
+    except Exception as exc:
+        trace.add_elapsed("analyze", time.perf_counter() - analyze_start)
+        error = _error_record(record, "analyze", exc)
+    else:
+        interaction_start = time.perf_counter()
+        try:
+            interactions_response = await interaction_checker.check([drug["name"] for drug in drugs])
+            trace.add_elapsed("interactions", time.perf_counter() - interaction_start)
+        except Exception as exc:
+            trace.add_elapsed("interactions", time.perf_counter() - interaction_start)
+            error = _error_record(record, "interactions", exc)
+    finally:
+        trace.add_elapsed("total", time.perf_counter() - total_start)
+        active_benchmark_trace.reset(token)
+
+    return {
+        "record_id": str(record.get("id", "")),
+        "category": record.get("category"),
+        "ocr_noise_level": record.get("ocr_noise_level"),
+        "drugs": drugs,
+        "interactions": interactions_response,
+        "ner_entities": trace.ner_entities,
+        "link_attempts": trace.link_attempts,
+        "elapsed_ms": {key: trace.elapsed_ms.get(key, 0.0) for key in ELAPSED_KEYS},
+    }, error
+
+
+def _timeout_prediction(record: dict, timeout_seconds: float) -> dict:
+    elapsed_ms = {key: 0.0 for key in ELAPSED_KEYS}
+    elapsed_ms["total"] = round(timeout_seconds * 1000, 3)
+    return {
+        "record_id": str(record.get("id", "")),
+        "category": record.get("category"),
+        "ocr_noise_level": record.get("ocr_noise_level"),
+        "drugs": [],
+        "interactions": None,
+        "ner_entities": [],
+        "link_attempts": [],
+        "elapsed_ms": elapsed_ms,
+    }
 
 
 def _error_record(record: dict, stage: str, exc: Exception) -> dict:
@@ -245,6 +287,15 @@ def _error_record(record: dict, stage: str, exc: Exception) -> dict:
         "stage": stage,
         "error_class": exc.__class__.__name__,
         "message": str(exc),
+    }
+
+
+def _timeout_error_record(record: dict, timeout_seconds: float) -> dict:
+    return {
+        "record_id": str(record.get("id", "")),
+        "stage": "record_timeout",
+        "error_class": "TimeoutError",
+        "message": f"record exceeded {timeout_seconds:g}s timeout",
     }
 
 
@@ -321,8 +372,9 @@ def build_manifest(
     output_prefix: str,
     results: dict,
     random_seed: int | str | None = None,
+    ddinter_db: dict | None = None,
 ) -> dict:
-    return {
+    manifest = {
         "run_id": run_id,
         "timestamp_utc": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "git_commit": _git_commit(),
@@ -346,6 +398,18 @@ def build_manifest(
         "sample_size": sample_size,
         "random_seed": random_seed,
         "metrics": summary_metrics(results),
+    }
+    if ddinter_db is not None:
+        manifest["ddinter_db"] = ddinter_db
+    return manifest
+
+
+def ddinter_metadata_from_args(args: argparse.Namespace) -> dict:
+    return {
+        "repo": args.ddinter_db_repo or os.environ.get("INTERACTION_DB_REPO"),
+        "tag": args.ddinter_db_tag or os.environ.get("INTERACTION_DB_TAG"),
+        "asset": args.ddinter_db_asset,
+        "sha256": args.ddinter_db_sha256 or os.environ.get("INTERACTION_DB_SHA256"),
     }
 
 
@@ -397,7 +461,12 @@ async def _main_async(args: argparse.Namespace) -> int:
             return 4
 
     seed_cases = load_seed_cases(args.seed_cases)
-    output = await run_benchmark(records, concurrency=args.concurrency, seed_cases=seed_cases)
+    output = await run_benchmark(
+        records,
+        concurrency=args.concurrency,
+        seed_cases=seed_cases,
+        record_timeout_seconds=args.record_timeout_seconds,
+    )
     run_id = args.run_id or _run_id()
     output_prefix = validate_output_prefix(args.output_prefix) if args.output_prefix else _output_prefix(run_id)
     output_dir = Path(args.output_dir) if args.output_dir else Path("benchmark-results") / run_id
@@ -410,6 +479,7 @@ async def _main_async(args: argparse.Namespace) -> int:
         output_prefix=output_prefix,
         results=output["results"],
         random_seed=args.random_seed,
+        ddinter_db=ddinter_metadata_from_args(args),
     )
     artifacts = write_local_outputs(
         output_dir=output_dir,
@@ -468,6 +538,12 @@ def main() -> int:
     parser.add_argument("--local-dataset", default=None, help="Local benchmark JSON path for smoke runs.")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--concurrency", type=int, default=8)
+    parser.add_argument(
+        "--record-timeout-seconds",
+        type=float,
+        default=120.0,
+        help="Maximum wall-clock seconds for one benchmark record before recording a timeout error.",
+    )
     parser.add_argument("--local-only", action="store_true", help="Do not upload to the HF experiments bucket.")
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--output-prefix", default=None)

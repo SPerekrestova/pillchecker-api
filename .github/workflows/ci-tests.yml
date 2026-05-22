@@ -87,11 +87,13 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: runtime
           push: true
           tags: ${{ env.IMAGE_TAG }}
           build-args: |
             INTERACTION_DB_REPO=${{ secrets.INTERACTION_DB_REPO }}
             INTERACTION_DB_TAG=${{ secrets.INTERACTION_DB_TAG }}
+            INTERACTION_DB_SHA256=${{ secrets.INTERACTION_DB_SHA256 }}
           cache-from: |
             type=registry,ref=${{ env.CACHE_TAG }}
             type=registry,ref=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/pillchecker-repo/api:cache-main
@@ -139,8 +141,10 @@ jobs:
           else
             echo "Build job was skipped or secrets missing, building locally..."
             docker build \
+              --target runtime \
               --build-arg INTERACTION_DB_REPO="${{ secrets.INTERACTION_DB_REPO }}" \
               --build-arg INTERACTION_DB_TAG="${{ secrets.INTERACTION_DB_TAG }}" \
+              --build-arg INTERACTION_DB_SHA256="${{ secrets.INTERACTION_DB_SHA256 }}" \
               -t pillchecker-api:ci .
           fi
 
@@ -215,6 +219,7 @@ jobs:
           env_vars: |
             INTERACTION_DB_REPO=${{ secrets.INTERACTION_DB_REPO }}
             INTERACTION_DB_TAG=${{ secrets.INTERACTION_DB_TAG }}
+            INTERACTION_DB_SHA256=${{ secrets.INTERACTION_DB_SHA256 }}
           secrets: |
             API_KEY=API_KEY:latest
             HF_TOKEN=HF_TOKEN:latest
