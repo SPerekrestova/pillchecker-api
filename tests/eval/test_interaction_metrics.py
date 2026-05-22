@@ -23,6 +23,62 @@ def test_interaction_descriptive_counts_all_buckets():
     assert result["descriptive"]["uncertain_rate"] == 0.5
 
 
+def test_interaction_descriptive_uses_attempt_diagnostics():
+    predictions = [{
+        "record_id": "1",
+        "interactions": {
+            "coverage_summary": {"ddinter": 1, "openfda": 1, "unknown": 1},
+            "interactions": [],
+        },
+        "interaction_attempts": [
+            {
+                "drug_a": "warfarin",
+                "drug_b": "ibuprofen",
+                "ddinter_rxcui": {"status": "hit"},
+                "ddinter_fts": {"status": "skipped"},
+                "openfda": {"status": "skipped"},
+                "final_source": "ddinter",
+                "final_severity": "major",
+            },
+            {
+                "drug_a": "a",
+                "drug_b": "b",
+                "ddinter_rxcui": {"status": "miss"},
+                "ddinter_fts": {"status": "hit"},
+                "openfda": {"status": "skipped"},
+                "final_source": "ddinter",
+                "final_severity": "moderate",
+            },
+            {
+                "drug_a": "c",
+                "drug_b": "d",
+                "ddinter_rxcui": {"status": "miss"},
+                "ddinter_fts": {"status": "miss"},
+                "openfda": {"status": "hit"},
+                "final_source": "openfda",
+                "final_severity": "minor",
+            },
+            {
+                "drug_a": "e",
+                "drug_b": "f",
+                "ddinter_rxcui": {"status": "skipped"},
+                "ddinter_fts": {"status": "miss"},
+                "openfda": {"status": "miss"},
+                "final_source": "unknown",
+                "miss_reason": "no_source_hit",
+            },
+        ],
+    }]
+
+    result = interactions.compute(predictions, [{"id": "1"}])
+
+    assert result["descriptive"]["ddinter_rxcui_hit_rate"] == 0.25
+    assert result["descriptive"]["ddinter_fts_rescue_rate"] == 0.25
+    assert result["descriptive"]["openfda_rescue_rate"] == 0.25
+    assert result["descriptive"]["source_counts"] == {"ddinter": 2, "openfda": 1, "unknown": 1}
+    assert result["descriptive"]["top_unknown_pairs"] == [{"drug_a": "e", "drug_b": "f", "count": 1}]
+
+
 def test_interaction_accuracy_none_without_reviewed_labels():
     dataset = [{"id": "1", "expected_interactions": []}]
 

@@ -90,6 +90,39 @@ async def test_run_benchmark_captures_trace_metrics_and_artifacts(monkeypatch, t
     assert prediction["interactions"]["interactions"][0]["source"] == "ddinter"
     assert prediction["ner_entities"][0]["text"] == "warfarin"
     assert len(prediction["link_attempts"]) >= 2
+    assert prediction["component_timings_ms"]["total"] >= 0.0
+    assert prediction["component_timings_ms"]["critical_path"] >= 0.0
+    assert prediction["slowest_component"] in {
+        "ocr_clean",
+        "ner",
+        "rxnorm",
+        "ddinter_rxcui",
+        "ddinter_fts",
+        "openfda",
+        "severity",
+        "analyze",
+        "interactions",
+        "total",
+    }
+    assert prediction["ner_diagnostics"]["strict"]["tp"] == 2
+    assert prediction["ner_diagnostics"]["strict"]["fp"] == 0
+    assert prediction["ner_diagnostics"]["strict"]["fn"] == 0
+    assert all(attempt["stage"] in {"analyze", "interactions"} for attempt in prediction["rxnorm_attempts"])
+    assert {
+        attempt["query"]
+        for attempt in prediction["rxnorm_attempts"]
+        if attempt["method"] == "get_rxcui"
+    } >= {"warfarin", "ibuprofen"}
+    interaction_attempt = prediction["interaction_attempts"][0]
+    assert interaction_attempt["drug_a"] == "warfarin"
+    assert interaction_attempt["drug_b"] == "ibuprofen"
+    assert interaction_attempt["rxcui_a"] == "11289"
+    assert interaction_attempt["rxcui_b"] == "5640"
+    assert interaction_attempt["ddinter_rxcui"]["status"] == "hit"
+    assert interaction_attempt["ddinter_rxcui"]["output"]["drug_a_id"] == "DDI00001"
+    assert interaction_attempt["final_source"] == "ddinter"
+    assert interaction_attempt["final_severity"] == "major"
+    assert prediction["pipeline_errors"] == []
     assert set(prediction["elapsed_ms"]) == {
         "ocr_clean",
         "ner",
@@ -103,6 +136,10 @@ async def test_run_benchmark_captures_trace_metrics_and_artifacts(monkeypatch, t
         "total",
     }
     assert output["results"]["ner"]["strict"]["f1"] == 1.0
+    assert output["results"]["overall"]["records_completed"] == 1
+    assert output["results"]["timing"]["components"]["total"]["p50_ms"] >= 0.0
+    assert output["results"]["rxnorm"]["n_rxnorm_attempts"] >= 2
+    assert output["results"]["interactions"]["descriptive"]["ddinter_rxcui_hit_rate"] == 1.0
     assert output["results"]["interactions"]["accuracy"] is None
 
     artifacts = run_benchmark.write_local_outputs(
@@ -119,12 +156,23 @@ async def test_run_benchmark_captures_trace_metrics_and_artifacts(monkeypatch, t
 
 def test_manifest_summary_contains_top_line_metric_scalars():
     results = {
+        "overall": {"records_completed": 25, "records_errored": 0, "timeout_count": 0},
+        "timing": {
+            "slowest_component": "rxnorm",
+            "components": {"total": {"p95_ms": 123.0}},
+        },
         "ner": {"strict": {"f1": 0.8}, "lenient": {"f1": 0.9}},
         "linking": {"coverage": 0.75, "nil_rate": 0.1},
+        "rxnorm": {"coverage": 0.75, "nil_rate": 0.1},
         "interactions": {
-            "descriptive": {"total_pairs_checked": 4, "ddinter_hit_rate": 0.5},
+            "descriptive": {
+                "total_pairs_checked": 4,
+                "ddinter_hit_rate": 0.5,
+                "ddinter_rxcui_hit_rate": 0.25,
+            },
             "seed_smoke": {"recall": 1.0, "false_alarm_rate": 0.0},
         },
+        "errors": {"total": 0},
         "fp_taxonomy": {"total_fp": 3},
     }
 
@@ -137,8 +185,14 @@ def test_manifest_summary_contains_top_line_metric_scalars():
         "linking_nil_rate": 0.1,
         "interactions_total_pairs_checked": 4,
         "interactions_ddinter_hit_rate": 0.5,
+        "interactions_ddinter_rxcui_hit_rate": 0.25,
         "interactions_openfda_hit_rate": None,
         "interactions_unknown_rate": None,
+        "records_completed": 25,
+        "records_errored": 0,
+        "timeout_count": 0,
+        "slowest_component": "rxnorm",
+        "total_p95_ms": 123.0,
         "seed_smoke_recall": 1.0,
         "seed_smoke_false_alarm_rate": 0.0,
         "fp_total": 3,
@@ -166,6 +220,7 @@ async def test_run_benchmark_records_per_record_errors(monkeypatch):
 
     assert output["predictions"][0]["record_id"] == "case-error"
     assert output["predictions"][0]["drugs"] == []
+    assert output["predictions"][0]["pipeline_errors"][0]["stage"] == "analyze"
     assert output["errors"] == [{
         "record_id": "case-error",
         "stage": "analyze",
@@ -197,6 +252,7 @@ async def test_run_benchmark_records_timeout_error(monkeypatch):
 
     assert output["predictions"][0]["record_id"] == "case-timeout"
     assert output["predictions"][0]["drugs"] == []
+    assert output["predictions"][0]["pipeline_errors"][0]["stage"] == "record_timeout"
     assert output["errors"] == [{
         "record_id": "case-timeout",
         "stage": "record_timeout",
@@ -253,6 +309,7 @@ def test_manifest_includes_ddinter_release_metadata():
         dataset_path="data/benchmark.json",
         command="python -m eval.run_benchmark",
         sample_size=1,
+        concurrency=8,
         output_prefix="benchmark-results/2026-05-21/tier1-test/",
         results={"ner": {}, "linking": {}, "interactions": {}, "fp_taxonomy": {}},
         random_seed=None,
@@ -270,6 +327,8 @@ def test_manifest_includes_ddinter_release_metadata():
         "asset": "ddinter.db",
         "sha256": "abc123",
     }
+    assert manifest["metric_schema_version"] == "benchmark-diagnostics-v1"
+    assert manifest["concurrency"] == 8
 
 
 @pytest.mark.asyncio

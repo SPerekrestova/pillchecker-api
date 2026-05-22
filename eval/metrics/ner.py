@@ -46,6 +46,11 @@ def _prf(tp: int, fp: int, fn: int) -> dict[str, float]:
 
 
 def _record_metrics(predicted: list[str], expected: list[str], matcher: Callable[[str, str], bool]) -> dict[str, float]:
+    counts = _record_counts(predicted, expected, matcher)
+    return _prf(counts["tp"], counts["fp"], counts["fn"])
+
+
+def _record_counts(predicted: list[str], expected: list[str], matcher: Callable[[str, str], bool]) -> dict[str, int]:
     matched_expected: set[int] = set()
     tp = 0
     for pred in predicted:
@@ -58,7 +63,22 @@ def _record_metrics(predicted: list[str], expected: list[str], matcher: Callable
             tp += 1
     fp = len(predicted) - tp
     fn = len(expected) - tp
-    return _prf(tp, fp, fn)
+    return {"tp": tp, "fp": fp, "fn": fn}
+
+
+def diagnostics_for_entities(entities: list[dict], expected_names: list[str]) -> dict:
+    predicted = [str(entity.get("text", "")) for entity in entities]
+    expected = [str(name) for name in expected_names]
+    strict = _record_counts(predicted, expected, _strict_match)
+    lenient = _record_counts(predicted, expected, _lenient_match)
+    return {
+        "entities": entities,
+        "strict": strict,
+        "lenient": lenient,
+        "expected_count": len(expected),
+        "predicted_count": len(predicted),
+        "low_confidence_count": sum(1 for entity in entities if float(entity.get("score", 1.0)) < 0.85),
+    }
 
 
 def _average(blocks: list[dict[str, float]]) -> dict[str, float]:
