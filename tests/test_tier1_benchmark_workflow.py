@@ -53,6 +53,9 @@ def test_dockerfile_has_separate_runtime_and_benchmark_targets():
     assert "FROM app-base AS runtime" in dockerfile
     assert "COPY eval/ /app/eval/" in dockerfile
     assert 'ENTRYPOINT ["python", "-m", "eval.run_benchmark"]' in dockerfile
+    assert "ARG INTERACTION_DB_REPO=SPerekrestova/pillchecker-api" in dockerfile
+    assert "ARG INTERACTION_DB_TAG=ddinter-2026-05-16" in dockerfile
+    assert "ARG INTERACTION_DB_SHA256=ebdd0640949ca551c0d669ee1161b00e5d868ef067c857852a8afc380e51d4fb" in dockerfile
     assert 'INTERACTION_DB_REPO="$(printf' in dockerfile
     assert 'INTERACTION_DB_TAG="$(printf' in dockerfile
     assert 'tr -d "\\r\\n"' in dockerfile

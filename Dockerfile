@@ -20,9 +20,9 @@ FROM python:3.12-slim AS db-downloader
 WORKDIR /app/data
 
 # Download a pinned DDInter SQLite DB from the project's release source.
-ARG INTERACTION_DB_REPO
-ARG INTERACTION_DB_TAG
-ARG INTERACTION_DB_SHA256
+ARG INTERACTION_DB_REPO=SPerekrestova/pillchecker-api
+ARG INTERACTION_DB_TAG=ddinter-2026-05-16
+ARG INTERACTION_DB_SHA256=ebdd0640949ca551c0d669ee1161b00e5d868ef067c857852a8afc380e51d4fb
 COPY scripts/download_interaction_db.py /tmp/download_interaction_db.py
 RUN --mount=type=secret,id=github_token,required=false \
     INTERACTION_DB_REPO="$(printf '%s' "${INTERACTION_DB_REPO}" | tr -d "\r\n")"; \
